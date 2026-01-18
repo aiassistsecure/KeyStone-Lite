@@ -169,9 +169,9 @@ async function searchFilesInProject(
           
           const lines = content.content.split('\n');
           const matches: string[] = [];
-          for (let i = 0; i < lines.length && matches.length < 3; i++) {
+          for (let i = 0; i < lines.length && matches.length < 10; i++) {
             if (lines[i].toLowerCase().includes(patternLower)) {
-              matches.push(`L${i + 1}: ${lines[i].trim().slice(0, 100)}`);
+              matches.push(`L${i + 1}: ${lines[i].trim().slice(0, 120)}`);
             }
           }
           
@@ -506,14 +506,18 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 result = `File: ${args.path}\n\`\`\`\n${lines}\n\`\`\``;
               }
             } else if (fnName === 'search_files') {
+              console.log('[search_files] Searching for:', args.pattern, 'ext:', args.file_extension);
               const searchResult = await searchFilesInProject(projectPath as string, args.pattern, args.file_extension);
+              console.log('[search_files] Result:', searchResult);
               if ('error' in searchResult) {
                 result = `Error: ${searchResult.error}`;
               } else if (searchResult.results.length === 0) {
-                result = `No matches found for "${args.pattern}"`;
+                result = `No matches found for "${args.pattern}"${args.file_extension ? ` in *${args.file_extension} files` : ''}`;
               } else {
-                result = searchResult.results.map(r => `${r.file}:\n${r.matches.join('\n')}`).join('\n\n');
+                result = `Found ${searchResult.results.length} files:\n\n` + 
+                  searchResult.results.map(r => `${r.file}:\n${r.matches.join('\n')}`).join('\n\n');
               }
+              console.log('[search_files] Returning:', result.slice(0, 300));
             } else {
               result = `Unknown tool: ${fnName}`;
             }
