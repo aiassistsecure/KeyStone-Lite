@@ -17,11 +17,12 @@ KeyStone Lite is a desktop code editor with built-in AI that understands your co
 
 - **Ship MVPs faster** - Stop context-switching between AI chat and your editor. It's all in one place
 - **Bring your own keys** - Use your existing API keys. Pay for what you use, no per-seat SaaS pricing
+- **Works offline** - Connect to local LLMs (Ollama, LMStudio, vLLM) for air-gapped environments
 - **White-label ready** - Fork it, brand it, ship it as your own dev tool (see licensing)
 
 ## Quick Start
 
-1. **Get an API key** from [aiassist.net](https://aiassist.net)
+1. **Get an API key** from [aiassist.net](https://aiassist.net) or use your own provider keys
 2. **Download** the latest release for your platform
 3. **Open a project folder** and start coding with AI
 
@@ -40,7 +41,7 @@ npm start        # Launch Electron (in another terminal)
 | **Multi-file context** | Add multiple files to AI context with one click |
 | **Surgical edits** | Line-precise INSERT, REPLACE, DELETE operations |
 | **Mode toggle** | Debug (review first) or Keystone (auto-apply) |
-| **Project templates** | Static HTML/TailWindCSS, React, Express, FastAPI, Electron starters |
+| **Project templates** | React, Express, FastAPI, Electron starters |
 | **Monaco editor** | Full VS Code editing experience |
 | **Custom endpoints** | Connect any OpenAI-compatible API |
 | **Secure by default** | Files sandboxed to project, keys encrypted locally |
@@ -77,13 +78,10 @@ In Debug mode, click "Apply All" to apply. In Keystone mode, changes apply insta
 | **Anthropic** | Claude 3.5 Sonnet, Claude 3 Opus |
 | **Google** | Gemini 1.5 Pro, Gemini 2.0 Flash |
 | **Mistral** | Mistral Large, Codestral |
-| **xAI** | xAI Grok |
-| **TogetherAI** | Open-source at scale |
-| **OpenRouter** | Multi-provider access |
+| **Cohere** | Command R+ |
 | **DeepSeek** | DeepSeek Coder, DeepSeek Chat |
-| **Fireworks AI** | Fast open-source |
-| **Perplexity** | Search-augmented AI |
-| **PIN Network** | Decentralized inference |
+| **Local** | Ollama, LMStudio, vLLM, any OpenAI-compatible |
+| **PIN Network** | Decentralized inference (coming soon) |
 
 ## Building for Distribution
 
@@ -131,21 +129,21 @@ keystone-lite/
 
 ## License
 
-**Business Source License 1.1** - See [LICENSE](./LICENSE)
+**Business Source License 1.1** - See [LICENSE_BUSL](./LICENSE_BUSL)
 
 - Free for personal use, development, and evaluation
 - Production use requires AiAS API keys or commercial license
 - Forks for distribution require written authorization from Interchained LLC
 - Converts to MIT License on January 1, 2030
 
-For commercial licensing: dev@interchained.org
+For commercial licensing: licensing@interchained.com
 
 ## Links
 
 - **API Keys & Platform**: [aiassist.net](https://aiassist.net)
-- **Issues & PRs**: [GitHub](https://github.com/aiassistsecure/keystone-lite)
-- **Enterprise Licensing**: dev@interchained.org
+- **Issues & PRs**: [GitHub](https://github.com/interchained/keystone-lite)
+- **Enterprise Licensing**: licensing@interchained.com
 
 ---
 
-**Built by [AiAssist Secure (AiAS) of Interchained LLC](https://aiassist.net)** - Powering the next generation of AI-assisted workflows.
+**Built by [Interchained LLC](https://interchained.com)** - Powering the next generation of AI-assisted development.

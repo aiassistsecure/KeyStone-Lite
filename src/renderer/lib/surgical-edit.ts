@@ -1,5 +1,5 @@
 export interface SurgicalEdit {
-  type: 'insert' | 'replace' | 'delete' | 'full_replace';
+  type: 'insert' | 'replace' | 'delete' | 'full_replace' | 'create';
   file: string;
   startLine: number;
   endLine?: number;
@@ -96,6 +96,19 @@ export function parseSurgicalEdits(response: string): ParsedEditResponse {
         } else {
           i++;
         }
+      } else if (line.startsWith('<<<CREATE')) {
+        const contentLines: string[] = [];
+        i++;
+        while (i < lines.length && !lines[i].startsWith('<<<')) {
+          contentLines.push(lines[i]);
+          i++;
+        }
+        edits.push({
+          type: 'create',
+          file: filename.trim(),
+          startLine: 1,
+          content: contentLines.join('\n'),
+        });
       } else {
         i++;
       }
@@ -112,7 +125,8 @@ export function applySurgicalEdit(
   const lines = originalContent.split('\n');
 
   switch (edit.type) {
-    case 'full_replace': {
+    case 'full_replace':
+    case 'create': {
       return edit.content || '';
     }
     case 'delete': {

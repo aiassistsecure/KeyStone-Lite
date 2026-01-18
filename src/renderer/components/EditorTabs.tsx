@@ -1,5 +1,5 @@
-import { useRef, useCallback, useEffect } from 'react';
-import { X, Circle, MessageSquarePlus } from 'lucide-react';
+import { useRef, useCallback } from 'react';
+import { X, Circle, MessageSquarePlus, Paperclip } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 import * as monaco from 'monaco-editor';
 import type { OpenFile } from '../pages/MainLayout';
@@ -115,8 +115,13 @@ export function EditorTabs({
                 : 'text-gray-400 hover:text-white hover:bg-white/5'
             }`}
           >
+            {contextFiles.includes(file.path) && (
+              <span title="In context">
+                <Paperclip className="w-3 h-3 text-cyan-400" />
+              </span>
+            )}
             {file.isDirty && (
-              <Circle className="w-2 h-2 fill-cyan-400 text-cyan-400" />
+              <Circle className="w-2 h-2 fill-amber-400 text-amber-400" />
             )}
             <span>{file.name}</span>
             <span
