@@ -434,6 +434,10 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         while (toolLoopCount < maxToolLoops) {
           const forceFinish = toolLoopCount >= 12;
           console.log('[Keystone] Loop', toolLoopCount + 1, 'messages:', conversationMessages.length, forceFinish ? '(forcing finish)' : '');
+          console.log('[Keystone] Sending messages:', JSON.stringify(conversationMessages.slice(-3)));
+          
+          const startTime = Date.now();
+          console.log('[Keystone] Starting API call at:', new Date().toISOString());
           
           const toolResponse = await fetch('https://api.aiassist.net/v1/chat/completions', {
             method: 'POST',
@@ -455,13 +459,16 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
             }),
           });
           
+          console.log('[Keystone] API call completed in', Date.now() - startTime, 'ms, status:', toolResponse.status);
+          
           if (!toolResponse.ok) {
             const errorData = await toolResponse.json().catch(() => ({}));
+            console.log('[Keystone] API error:', errorData);
             throw new Error(errorData.detail || errorData.error?.message || `API request failed (${toolResponse.status})`);
           }
           
           const toolData = await toolResponse.json();
-          console.log('[Keystone] Response:', JSON.stringify(toolData).slice(0, 500));
+          console.log('[Keystone] Response received:', JSON.stringify(toolData).slice(0, 500));
           
           const choice = toolData.choices?.[0];
           const toolCalls = choice?.message?.tool_calls;
