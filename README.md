@@ -4,6 +4,8 @@
 
 KeyStone Lite is a desktop code editor with built-in AI that understands your codebase and makes precise, line-level changes. No more copy-pasting from ChatGPT. No more broken suggestions. Just ask, review, apply.
 
+## Interface Overview
+
 ![Keystone Lite](https://i.ibb.co/tp31STbp/Keystone-Lite-1-17-26-10-22-27-PM.png)
 ![Keystone Lite](https://i.ibb.co/pvj5bBc4/Keystone-Lite-1-17-26-10-22-47-PM.png)
 ![Keystone Lite](https://i.ibb.co/zT18pLx5/Keystone-Lite-1-17-26-3-51-15-PM.png)
