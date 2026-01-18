@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com;">
+  <title>Your App</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-slate-950 text-white font-sans antialiased overflow-hidden">
+  
+  <!-- Custom Titlebar -->
+  <header id="titlebar" class="h-10 bg-slate-900/80 backdrop-blur-sm border-b border-white/5 flex items-center justify-between px-4 select-none" style="-webkit-app-region: drag;">
+    <div class="flex items-center gap-2">
+      <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-xs font-bold">
+        A
+      </div>
+      <span class="text-sm font-medium text-slate-300">Your App</span>
+    </div>
+    
+    <div class="flex items-center" style="-webkit-app-region: no-drag;">
+      <button id="btn-minimize" class="w-10 h-8 flex items-center justify-center hover:bg-white/10 transition-colors">
+        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-width="2" d="M20 12H4"/>
+        </svg>
+      </button>
+      <button id="btn-maximize" class="w-10 h-8 flex items-center justify-center hover:bg-white/10 transition-colors">
+        <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <rect x="4" y="4" width="16" height="16" rx="2" stroke-width="2"/>
+        </svg>
+      </button>
+      <button id="btn-close" class="w-10 h-8 flex items-center justify-center hover:bg-red-500 transition-colors group">
+        <svg class="w-4 h-4 text-slate-400 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="h-[calc(100vh-2.5rem)] overflow-auto">
+    <div class="min-h-full flex flex-col items-center justify-center p-8">
+      
+      <!-- Hero -->
+      <div class="text-center max-w-2xl">
+        <div class="w-20 h-20 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-primary-500/20 to-primary-700/20 border border-primary-500/30 flex items-center justify-center">
+          <svg class="w-10 h-10 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        
+        <h1 class="text-4xl font-bold mb-4">
+          Welcome to <span class="bg-gradient-to-r from-primary-400 to-cyan-400 bg-clip-text text-transparent">Your App</span>
+        </h1>
+        
+        <p class="text-lg text-slate-400 mb-8">
+          An Electron desktop app with Tailwind CSS and TypeScript. Edit this template to build something amazing.
+        </p>
+
+        <div class="flex gap-4 justify-center">
+          <button class="px-6 py-3 bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 rounded-xl font-medium transition-all hover:scale-105 active:scale-95">
+            Get Started
+          </button>
+          <button class="px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl font-medium transition-all">
+            Documentation
+          </button>
+        </div>
+      </div>
+
+      <!-- Features Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16 max-w-4xl w-full">
+        <div class="p-6 bg-slate-900/50 border border-white/5 rounded-2xl hover:border-primary-500/30 transition-colors">
+          <div class="w-12 h-12 rounded-xl bg-primary-500/10 flex items-center justify-center mb-4">
+            <svg class="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+            </svg>
+          </div>
+          <h3 class="font-semibold mb-2">Cross-Platform</h3>
+          <p class="text-sm text-slate-400">Build for Windows, macOS, and Linux from a single codebase.</p>
+        </div>
+
+        <div class="p-6 bg-slate-900/50 border border-white/5 rounded-2xl hover:border-primary-500/30 transition-colors">
+          <div class="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center mb-4">
+            <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+            </svg>
+          </div>
+          <h3 class="font-semibold mb-2">Tailwind CSS</h3>
+          <p class="text-sm text-slate-400">Utility-first CSS framework for rapid UI development.</p>
+        </div>
+
+        <div class="p-6 bg-slate-900/50 border border-white/5 rounded-2xl hover:border-primary-500/30 transition-colors">
+          <div class="w-12 h-12 rounded-xl bg-purple-500/10 flex items-center justify-center mb-4">
+            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+            </svg>
+          </div>
+          <h3 class="font-semibold mb-2">TypeScript</h3>
+          <p class="text-sm text-slate-400">Type-safe development with full IDE support.</p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

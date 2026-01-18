@@ -1,0 +1,90 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #0a0a0f;
+  color: #fff;
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+h1 {
+  margin-bottom: 1.5rem;
+  font-size: 2rem;
+}
+
+.input-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.input-row input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #1a1a1f;
+  color: #fff;
+  font-size: 1rem;
+}
+
+.input-row button {
+  padding: 0.75rem 1.5rem;
+  background: #0ea5e9;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.input-row button:hover {
+  background: #0284c7;
+}
+
+.item-list {
+  list-style: none;
+}
+
+.item-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: #1a1a1f;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+}
+
+.item-list li.done span {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.item-list li span {
+  cursor: pointer;
+}
+
+.item-list li button {
+  background: none;
+  border: none;
+  color: #f87171;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+
+.empty {
+  text-align: center;
+  color: #666;
+  padding: 2rem;
+}
