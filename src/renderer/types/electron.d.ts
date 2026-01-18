@@ -49,6 +49,7 @@ export interface StoreSchema {
   maxTokens: number;
   streamResponses: boolean;
   recentProjects: string[];
+  projectPath: string;
 }
 
 declare global {

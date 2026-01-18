@@ -13,6 +13,7 @@ import {
   Sparkles,
   RotateCcw,
   FileEdit,
+  Paperclip,
 } from 'lucide-react';
 import type { OpenFile } from '../pages/MainLayout';
 import { ModelSelector } from './ModelSelector';
@@ -56,6 +57,179 @@ function parseCodeBlocks(content: string): (string | CodeBlock)[] {
 
   return parts;
 }
+
+async function getProjectTree(projectPath: string, maxDepth = 3, maxFiles = 200): Promise<string> {
+  if (!projectPath) return '';
+  
+  const lines: string[] = [];
+  let fileCount = 0;
+  
+  async function traverse(path: string, depth: number, prefix: string) {
+    if (depth > maxDepth || fileCount >= maxFiles) return;
+    
+    try {
+      const result = await window.electron.fs.readDir(path);
+      if ('error' in result) return;
+      
+      const entries = result.filter(e => 
+        !e.name.startsWith('.') && 
+        !['node_modules', '__pycache__', 'build', 'dist', '.git', 'target', 'vendor'].includes(e.name)
+      ).sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+      
+      for (let i = 0; i < entries.length && fileCount < maxFiles; i++) {
+        const entry = entries[i];
+        const isLast = i === entries.length - 1;
+        const connector = isLast ? '└── ' : '├── ';
+        const nextPrefix = prefix + (isLast ? '    ' : '│   ');
+        
+        lines.push(`${prefix}${connector}${entry.name}${entry.isDirectory ? '/' : ''}`);
+        fileCount++;
+        
+        if (entry.isDirectory) {
+          await traverse(entry.path, depth + 1, nextPrefix);
+        }
+      }
+    } catch (e) {
+      console.error('[Tree] Error reading:', path, e);
+    }
+  }
+  
+  const projectName = projectPath.split(/[/\\]/).pop() || 'project';
+  lines.push(`${projectName}/`);
+  await traverse(projectPath, 0, '');
+  
+  if (fileCount >= maxFiles) {
+    lines.push(`... (truncated at ${maxFiles} files)`);
+  }
+  
+  return lines.join('\n');
+}
+
+async function readFileInProject(projectPath: string, filePath: string): Promise<{ content: string } | { error: string }> {
+  if (!projectPath) return { error: 'No project open' };
+  
+  const normalizedProject = projectPath.replace(/\\/g, '/').toLowerCase();
+  let fullPath: string;
+  
+  if (/^[a-zA-Z]:[\\\/]/.test(filePath) || filePath.startsWith('/')) {
+    fullPath = filePath;
+  } else {
+    const separator = projectPath.includes('\\') ? '\\' : '/';
+    fullPath = `${projectPath}${separator}${filePath.replace(/\//g, separator)}`;
+  }
+  
+  const normalizedFull = fullPath.replace(/\\/g, '/').toLowerCase();
+  if (!normalizedFull.startsWith(normalizedProject)) {
+    return { error: 'Access denied: file outside project folder' };
+  }
+  
+  const result = await window.electron.fs.readFile(fullPath);
+  if ('error' in result) return { error: result.error };
+  return { content: result.content || '' };
+}
+
+async function searchFilesInProject(
+  projectPath: string, 
+  pattern: string, 
+  extension?: string
+): Promise<{ results: Array<{ file: string; matches: string[] }> } | { error: string }> {
+  if (!projectPath) return { error: 'No project open' };
+  
+  const results: Array<{ file: string; matches: string[] }> = [];
+  const patternLower = pattern.toLowerCase();
+  let fileCount = 0;
+  const maxResults = 20;
+  
+  async function searchDir(path: string) {
+    if (results.length >= maxResults) return;
+    
+    try {
+      const entries = await window.electron.fs.readDir(path);
+      if ('error' in entries) return;
+      
+      for (const entry of entries) {
+        if (results.length >= maxResults) break;
+        if (entry.name.startsWith('.') || 
+            ['node_modules', '__pycache__', 'build', 'dist', '.git', 'target'].includes(entry.name)) {
+          continue;
+        }
+        
+        if (entry.isDirectory) {
+          await searchDir(entry.path);
+        } else {
+          if (extension && !entry.name.endsWith(extension)) continue;
+          fileCount++;
+          if (fileCount > 500) continue;
+          
+          const content = await window.electron.fs.readFile(entry.path);
+          if ('error' in content || !content.content) continue;
+          
+          const lines = content.content.split('\n');
+          const matches: string[] = [];
+          for (let i = 0; i < lines.length && matches.length < 3; i++) {
+            if (lines[i].toLowerCase().includes(patternLower)) {
+              matches.push(`L${i + 1}: ${lines[i].trim().slice(0, 100)}`);
+            }
+          }
+          
+          if (matches.length > 0) {
+            const relPath = entry.path.replace(projectPath, '').replace(/^[\\\/]/, '');
+            results.push({ file: relPath, matches });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Search] Error:', e);
+    }
+  }
+  
+  await searchDir(projectPath);
+  return { results };
+}
+
+const LLM_TOOLS = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'read_file',
+      description: 'Read the contents of a file in the project. Use this to examine code before making edits.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Relative path to the file from project root (e.g., "src/main.cpp")'
+          }
+        },
+        required: ['path']
+      }
+    }
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'search_files',
+      description: 'Search for a pattern in all files. Returns matching file paths and line snippets.',
+      parameters: {
+        type: 'object',
+        properties: {
+          pattern: {
+            type: 'string',
+            description: 'Text pattern to search for (case-insensitive)'
+          },
+          file_extension: {
+            type: 'string',
+            description: 'Optional: limit to files with this extension (e.g., ".cpp", ".h")'
+          }
+        },
+        required: ['pattern']
+      }
+    }
+  }
+];
 
 interface ChatPanelProps {
   apiKey: string;
@@ -171,29 +345,50 @@ export function ChatPanel({
         .filter(Boolean)
         .join('\n\n');
 
-      const keystoneModeInstructions = filesToInclude.size > 0 ? `
+      const keystoneModeInstructions = `
 YOU ARE IN KEYSTONE (CREATIVE) MODE.
 
-CRITICAL: You MUST output edits in this EXACT format. No exceptions.
+WORKFLOW (follow this order):
+1. GATHER: Use read_file and search_files to understand the relevant code (3-8 calls typically)
+2. ANALYZE: Once you have enough context, stop reading
+3. PRODUCE: Generate your response with specific code suggestions, edits, or solutions
+
+TOOLS AVAILABLE:
+- read_file(path): Read any file in the project. Use relative paths like "src/main.cpp"
+- search_files(pattern, file_extension?): Search for text patterns across files
+
+IMPORTANT RULES:
+- Maximum 15 tool calls - be strategic, don't read every file
+- After reading 3-8 key files, you likely have enough context - STOP and produce output
+- Your final response MUST include actionable suggestions, code examples, or edits
+- Never end with just "I've read the files" - always provide solutions
+
+When outputting code changes, use this EXACT format:
 
 <<<EDIT filename.ext>>>
 <<<REPLACE lines X-Y>>>
 complete new code for those lines
 <<<END>>>
 
-RULES:
-1. ALWAYS use the exact format above - <<<EDIT>>>, <<<REPLACE lines X-Y>>>, <<<END>>>
-2. For large rewrites, use the full line range (e.g., REPLACE lines 1-250)
-3. Output the COMPLETE new code between REPLACE and END - never truncate or use "..." or "// rest of code"
+For NEW files, use:
+<<<EDIT path/to/newfile.ext>>>
+<<<CREATE>>>
+complete file content here
+<<<END>>>
+
+EDIT FORMAT RULES:
+1. ALWAYS use the exact format above - <<<EDIT>>>, then operation, then <<<END>>>
+2. Operations: REPLACE lines X-Y, INSERT after line X, DELETE lines X-Y, CREATE (for new files)
+3. Output the COMPLETE code between the operation and END - never truncate or use "..." or "// rest of code"
 4. You can use multiple REPLACE blocks in one EDIT for different sections
-5. Line numbers MUST match the file shown in context
+5. Line numbers MUST match the file you read (use read_file to get line numbers)
 
 DO NOT:
 - Show code snippets outside the EDIT format
 - Use placeholder comments like "// ... rest remains the same"
 - Truncate code - always output complete sections
 - Skip the <<<END>>> tag
-` : '';
+`;
 
       const debugModeInstructions = filesToInclude.size > 0 ? `
 YOU ARE IN DEBUG MODE. Make minimal, surgical edits to fix issues. Use this format:
@@ -214,11 +409,130 @@ Always use line numbers from the context files shown below.
         ? `\nOpen files: ${openFiles.map(f => f.name).join(', ')}`
         : '';
       
+      const projectPath = await window.electron.store.get('projectPath');
+      const projectTree = projectPath ? await getProjectTree(projectPath as string) : '';
+      
       const systemPrompt = `You are Keystone Lite, an AI code editor. You help users write, debug, and improve code.
 ${modeInstructions}${openFilesList}
+${projectTree ? `\nProject structure:\n\`\`\`\n${projectTree}\n\`\`\`\n` : ''}
 ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
 
       console.log('[Chat] System prompt length:', systemPrompt.length, 'Context files:', contextFiles.length);
+      
+      const conversationMessages: Array<{ role: string; content?: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string }> = [
+        { role: 'system', content: systemPrompt },
+        ...messages.map((m) => ({ role: m.role, content: m.content })),
+        { role: 'user', content: input.trim() },
+      ];
+      
+      if (keystoneMode) {
+        let toolLoopCount = 0;
+        const maxToolLoops = 15;
+        
+        console.log('[Keystone] Starting tool-enabled chat, tools:', LLM_TOOLS.map(t => t.function.name));
+        
+        while (toolLoopCount < maxToolLoops) {
+          const forceFinish = toolLoopCount >= 12;
+          console.log('[Keystone] Loop', toolLoopCount + 1, 'messages:', conversationMessages.length, forceFinish ? '(forcing finish)' : '');
+          
+          const toolResponse = await fetch('https://api.aiassist.net/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${apiKey}`,
+              ...(provider && { 'X-AiAssist-Provider': provider }),
+            },
+            body: JSON.stringify({
+              model: model || 'llama-3.3-70b-versatile',
+              messages: forceFinish 
+                ? [...conversationMessages, { role: 'system', content: 'STOP using tools now. You have gathered enough information. Produce your final response with code suggestions.' }]
+                : conversationMessages,
+              tools: forceFinish ? undefined : LLM_TOOLS,
+              tool_choice: forceFinish ? undefined : 'auto',
+              temperature,
+              max_tokens: maxTokens,
+              max_completion_tokens: maxTokens,
+            }),
+          });
+          
+          if (!toolResponse.ok) {
+            const errorData = await toolResponse.json().catch(() => ({}));
+            throw new Error(errorData.detail || errorData.error?.message || `API request failed (${toolResponse.status})`);
+          }
+          
+          const toolData = await toolResponse.json();
+          console.log('[Keystone] Response:', JSON.stringify(toolData).slice(0, 500));
+          
+          const choice = toolData.choices?.[0];
+          const toolCalls = choice?.message?.tool_calls;
+          
+          console.log('[Keystone] Tool calls:', toolCalls ? toolCalls.length : 'none');
+          
+          if (!toolCalls || toolCalls.length === 0) {
+            const finalContent = choice?.message?.content || '';
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMessageId ? { ...m, content: finalContent } : m
+              )
+            );
+            break;
+          }
+          
+          conversationMessages.push({
+            role: 'assistant',
+            content: choice.message.content || null,
+            tool_calls: toolCalls,
+          });
+          
+          for (const toolCall of toolCalls) {
+            const fnName = toolCall.function.name;
+            const args = JSON.parse(toolCall.function.arguments || '{}');
+            let result: string;
+            
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMessageId 
+                  ? { ...m, content: `🔍 Reading ${fnName === 'read_file' ? args.path : `files matching "${args.pattern}"`}...` }
+                  : m
+              )
+            );
+            
+            if (fnName === 'read_file') {
+              const readResult = await readFileInProject(projectPath as string, args.path);
+              if ('error' in readResult) {
+                result = `Error: ${readResult.error}`;
+              } else {
+                const lines = readResult.content.split('\n').map((l, i) => `${(i+1).toString().padStart(4)}| ${l}`).join('\n');
+                result = `File: ${args.path}\n\`\`\`\n${lines}\n\`\`\``;
+              }
+            } else if (fnName === 'search_files') {
+              const searchResult = await searchFilesInProject(projectPath as string, args.pattern, args.file_extension);
+              if ('error' in searchResult) {
+                result = `Error: ${searchResult.error}`;
+              } else if (searchResult.results.length === 0) {
+                result = `No matches found for "${args.pattern}"`;
+              } else {
+                result = searchResult.results.map(r => `${r.file}:\n${r.matches.join('\n')}`).join('\n\n');
+              }
+            } else {
+              result = `Unknown tool: ${fnName}`;
+            }
+            
+            conversationMessages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: result,
+            });
+            
+            console.log(`[Tool] ${fnName}:`, args, '→', result.slice(0, 200));
+          }
+          
+          toolLoopCount++;
+        }
+        
+        setIsLoading(false);
+        return;
+      }
       
       const response = await fetch('https://api.aiassist.net/v1/chat/completions', {
         method: 'POST',
@@ -229,14 +543,11 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         },
         body: JSON.stringify({
           model: model || 'llama-3.3-70b-versatile',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...messages.map((m) => ({ role: m.role, content: m.content })),
-            { role: 'user', content: input.trim() },
-          ],
+          messages: conversationMessages,
           stream: true,
           temperature,
           max_tokens: maxTokens,
+          max_completion_tokens: maxTokens,
         }),
       });
 
@@ -357,28 +668,76 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
       console.log('[Apply] Files to edit:', Object.keys(editsByFile));
 
       for (const [filename, fileEdits] of Object.entries(editsByFile)) {
-        const filePath = `${projectPath}/${filename}`;
-        const file = openFiles.find((f) => 
-          f.path === filePath || 
-          f.name === filename || 
-          f.path.endsWith(filename) ||
-          f.path.endsWith(`/${filename}`)
-        );
+        const isCreateOnly = fileEdits.every(e => e.type === 'create' || e.type === 'full_replace');
+        const separator = String(projectPath).includes('\\') ? '\\' : '/';
         
-        console.log('[Apply] Looking for:', filename, 'Found:', file?.name || 'NOT FOUND');
-        console.log('[Apply] Open files:', openFiles.map(f => f.name));
-        
-        if (!file) {
-          alert(`File not found: ${filename}. Make sure it's open in the editor.`);
+        if (isCreateOnly) {
+          const filePath = /^[a-zA-Z]:[\\\/]/.test(filename) || filename.startsWith('/')
+            ? filename
+            : `${projectPath}${separator}${filename.replace(/\//g, separator)}`;
+          
+          const newContent = fileEdits[0].content || '';
+          console.log('[Apply] Creating new file:', filePath, 'Content length:', newContent.length);
+          const writeResult = await window.electron.fs.writeFile(filePath, newContent);
+          console.log('[Apply] Write result:', writeResult);
+          onApplyEdit(filePath, newContent);
+          console.log('[Apply] Successfully created:', filePath);
           continue;
         }
+        
+        const normalizedFilename = filename.replace(/\\/g, '/').toLowerCase();
+        const baseFilename = filename.split('/').pop()?.toLowerCase() || filename.split('\\').pop()?.toLowerCase() || '';
+        
+        const openFile = openFiles.find((f) => {
+          const normalizedPath = f.path.replace(/\\/g, '/').toLowerCase();
+          const fileBasename = f.name.toLowerCase();
+          return (
+            normalizedPath.endsWith(normalizedFilename) ||
+            normalizedPath.endsWith('/' + normalizedFilename) ||
+            normalizedPath.includes('/' + normalizedFilename) ||
+            fileBasename === baseFilename
+          );
+        });
+        
+        let filePath: string;
+        let originalContent: string;
+        
+        if (openFile) {
+          filePath = openFile.path;
+          originalContent = openFile.content;
+          console.log('[Apply] Found in open files:', openFile.name);
+        } else {
+          const isAbsolutePath = /^[a-zA-Z]:[\\\/]/.test(filename) || filename.startsWith('/');
+          
+          if (isAbsolutePath) {
+            console.log('[Apply] Trying absolute path:', filename);
+            const readResult = await window.electron.fs.readFile(filename);
+            if (!readResult.error && readResult.content) {
+              filePath = filename;
+              originalContent = readResult.content;
+            } else {
+              alert(`File not found: ${filename}`);
+              continue;
+            }
+          } else {
+            filePath = `${projectPath}${separator}${filename.replace(/\//g, separator)}`;
+            console.log('[Apply] Reading from disk:', filePath);
+            
+            const readResult = await window.electron.fs.readFile(filePath);
+            if (readResult.error || !readResult.content) {
+              alert(`File not found: ${filename}`);
+              continue;
+            }
+            originalContent = readResult.content;
+          }
+        }
 
-        const newContent = applyMultipleEdits(file.content, fileEdits);
-        console.log('[Apply] Writing to:', file.path, 'New content length:', newContent.length);
-        const writeResult = await window.electron.fs.writeFile(file.path, newContent);
+        const newContent = applyMultipleEdits(originalContent, fileEdits);
+        console.log('[Apply] Writing to:', filePath, 'New content length:', newContent.length);
+        const writeResult = await window.electron.fs.writeFile(filePath, newContent);
         console.log('[Apply] Write result:', writeResult);
-        onApplyEdit(file.path, newContent);
-        console.log('[Apply] Successfully applied edits to:', file.name);
+        onApplyEdit(filePath, newContent);
+        console.log('[Apply] Successfully applied edits to:', filePath);
       }
     } catch (error) {
       console.error('[Apply] Failed to apply surgical edits:', error);
@@ -522,6 +881,12 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               </motion.div>
             </div>
             <span className="text-sm font-semibold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">Chat</span>
+            {contextFiles.length > 0 && (
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-cyan-500/20 border border-cyan-500/30 rounded-full text-xs text-cyan-400">
+                <Paperclip className="w-3 h-3" />
+                {contextFiles.length} file{contextFiles.length > 1 ? 's' : ''}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
