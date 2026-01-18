@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "description": "AI-powered code debugging and editing - powered by any model",
   "main": "dist/main/index.js",
-  "author": "AiAssist <dev@interchained.org>",
-  "license": "MIT",
+  "author": "Mark Allen Evans Jr. (AiAssist Secure) <dev@interchained.org>",
+  "license": "BUSL",
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
     "dev:main": "tsc -p tsconfig.main.json --watch",
