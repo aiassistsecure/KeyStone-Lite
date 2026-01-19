@@ -4,12 +4,10 @@ import {
   Send,
   X,
   FileCode,
-  Loader2,
   Bot,
   User,
   Copy,
   Check,
-  ChevronDown,
   Sparkles,
   RotateCcw,
   FileEdit,
@@ -57,6 +55,123 @@ function parseCodeBlocks(content: string): (string | CodeBlock)[] {
   }
 
   return parts;
+}
+
+const THINKING_PHRASES = [
+  { text: "Working on your code", emoji: "⚡" },
+  { text: "Thinking about the solution", emoji: "🧠" },
+  { text: "Coding", emoji: "✨" },
+];
+
+interface ThinkingAnimationProps {
+  activeFile?: string;
+  activeTool?: string;
+  activeOperation?: string;
+}
+
+function ThinkingAnimation({ activeFile, activeTool, activeOperation }: ThinkingAnimationProps) {
+  const [phraseIndex, setPhraseIndex] = useState(0);
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPhraseIndex((prev) => (prev + 1) % THINKING_PHRASES.length);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, []);
+  
+  const phrase = THINKING_PHRASES[phraseIndex];
+  const displayFile = activeFile ? activeFile.split(/[/\\]/).pop() : null;
+  
+  const getActivityLabel = () => {
+    if (activeOperation === 'insert') return 'Inserting code in';
+    if (activeOperation === 'replace') return 'Replacing code in';
+    if (activeOperation === 'delete') return 'Deleting code in';
+    if (activeOperation === 'edit') return 'Editing';
+    if (activeOperation === 'create') return 'Creating';
+    if (activeTool === 'surgical_edit') return 'Writing code in';
+    if (activeTool === 'read_file') return 'Reading';
+    if (activeTool === 'search_files') return 'Searching';
+    if (activeTool === 'list_files') return 'Browsing';
+    return null;
+  };
+  
+  const activityLabel = getActivityLabel();
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex gap-3"
+    >
+      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500/30 to-purple-500/30 flex items-center justify-center overflow-hidden">
+        <motion.div
+          animate={{ 
+            rotate: [0, 10, -10, 0],
+            scale: [1, 1.1, 1]
+          }}
+          transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <Sparkles className="w-4 h-4 text-cyan-400" />
+        </motion.div>
+      </div>
+      <motion.div 
+        className="bg-gradient-to-r from-cyan-500/10 to-purple-500/10 rounded-xl px-4 py-3 border border-white/5"
+        animate={{ 
+          boxShadow: [
+            '0 0 0 0 rgba(34, 211, 238, 0)',
+            '0 0 20px 2px rgba(34, 211, 238, 0.15)',
+            '0 0 0 0 rgba(34, 211, 238, 0)'
+          ]
+        }}
+        transition={{ duration: 2, repeat: Infinity }}
+      >
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-3">
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={phraseIndex}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                transition={{ duration: 0.3 }}
+                className="text-sm text-gray-300 flex items-center gap-2"
+              >
+                <span>{phrase.emoji}</span>
+                <span>{phrase.text}</span>
+              </motion.span>
+            </AnimatePresence>
+            <span className="flex gap-0.5">
+              {[0, 1, 2].map((i) => (
+                <motion.span
+                  key={i}
+                  animate={{ 
+                    opacity: [0.3, 1, 0.3],
+                    y: [0, -2, 0]
+                  }}
+                  transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15 }}
+                  className="text-cyan-400 font-bold"
+                >•</motion.span>
+              ))}
+            </span>
+          </div>
+          {displayFile && (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`${activityLabel}-${displayFile}`}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 10 }}
+                className="flex items-center gap-2 text-xs text-gray-500"
+              >
+                <FileCode className="w-3 h-3" />
+                <span>{activityLabel && `${activityLabel} `}<span className="text-cyan-400/70 font-mono">{displayFile}</span></span>
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
 }
 
 async function getProjectTree(projectPath: string, maxDepth = 3, maxFiles = 200): Promise<string> {
@@ -266,6 +381,9 @@ export function ChatPanel({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [keystoneMode, setKeystoneMode] = useState(false);
   const [appliedMessageIds, setAppliedMessageIds] = useState<Set<string>>(new Set());
+  const [streamingFile, setStreamingFile] = useState<string | undefined>();
+  const [streamingTool, setStreamingTool] = useState<string | undefined>();
+  const [streamingOperation, setStreamingOperation] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -455,12 +573,10 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
             temperature,
             maxTokens,
             provider: provider || undefined,
-            onProgress: (text) => {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMessageId ? { ...m, content: text } : m
-                )
-              );
+            onToolActivity: (toolName, filePath, operation) => {
+              setStreamingTool(toolName);
+              if (filePath) setStreamingFile(filePath);
+              if (operation) setStreamingOperation(operation);
             },
           });
           
@@ -539,6 +655,9 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         }
         
         setIsLoading(false);
+        setStreamingFile(undefined);
+        setStreamingTool(undefined);
+        setStreamingOperation(undefined);
         return;
       }
       
@@ -626,6 +745,9 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
       );
     } finally {
       setIsLoading(false);
+      setStreamingFile(undefined);
+      setStreamingTool(undefined);
+      setStreamingOperation(undefined);
     }
   };
 
@@ -1003,7 +1125,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         )}
 
         <AnimatePresence>
-          {messages.map((message) => (
+          {messages.filter(m => !(isLoading && m.role === 'assistant' && !m.content)).map((message) => (
             <motion.div
               key={message.id}
               initial={{ opacity: 0, y: 10 }}
@@ -1060,43 +1182,8 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
           ))}
         </AnimatePresence>
 
-        {isLoading && messages[messages.length - 1]?.role === 'assistant' && messages[messages.length - 1]?.content === '' && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex gap-3"
-          >
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500/30 to-purple-500/30 flex items-center justify-center">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-              >
-                <Sparkles className="w-4 h-4 text-cyan-400" />
-              </motion.div>
-            </div>
-            <div className="bg-white/5 rounded-xl px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-400">coding</span>
-                <span className="flex gap-0.5">
-                  <motion.span
-                    animate={{ opacity: [0.3, 1, 0.3] }}
-                    transition={{ duration: 1.2, repeat: Infinity, delay: 0 }}
-                    className="text-cyan-400"
-                  >.</motion.span>
-                  <motion.span
-                    animate={{ opacity: [0.3, 1, 0.3] }}
-                    transition={{ duration: 1.2, repeat: Infinity, delay: 0.2 }}
-                    className="text-cyan-400"
-                  >.</motion.span>
-                  <motion.span
-                    animate={{ opacity: [0.3, 1, 0.3] }}
-                    transition={{ duration: 1.2, repeat: Infinity, delay: 0.4 }}
-                    className="text-cyan-400"
-                  >.</motion.span>
-                </span>
-              </div>
-            </div>
-          </motion.div>
+        {isLoading && (
+          <ThinkingAnimation activeFile={streamingFile} activeTool={streamingTool} activeOperation={streamingOperation} />
         )}
 
         <div ref={messagesEndRef} />

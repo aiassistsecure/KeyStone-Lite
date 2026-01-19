@@ -8,6 +8,7 @@ interface StreamCompletionOptions {
   maxTokens?: number;
   provider?: string;
   onProgress?: (text: string) => void;
+  onToolActivity?: (toolName: string, filePath?: string, operation?: string) => void;
 }
 
 interface ToolCall {
@@ -47,7 +48,8 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
     temperature = 0.7,
     maxTokens = 4096,
     provider,
-    onProgress
+    onProgress,
+    onToolActivity
   } = options;
 
   const response = await fetch('https://api.aiassist.net/v1/chat/completions', {
@@ -95,12 +97,17 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
     buffer = lines.pop() || '';
 
     for (const line of lines) {
+      console.log('[Stream] Raw line:', line.slice(0, 200));
       if (!line.startsWith('data: ')) continue;
       const data = line.slice(6).trim();
-      if (data === '[DONE]') continue;
+      if (data === '[DONE]') {
+        console.log('[Stream] Received [DONE]');
+        continue;
+      }
 
       try {
         const chunk = JSON.parse(data);
+        console.log('[Stream] Parsed chunk:', JSON.stringify(chunk).slice(0, 300));
         if (chunk.id) responseId = chunk.id;
 
         const delta = chunk.choices?.[0]?.delta;
@@ -110,6 +117,12 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
         if (delta?.content) {
           content += delta.content;
           onProgress?.(content);
+          
+          const editMatch = content.match(/<<<(EDIT|INSERT|REPLACE|DELETE|CREATE)\s+([^\s>]+)/i);
+          if (editMatch) {
+            const [, op, filePath] = editMatch;
+            onToolActivity?.('surgical_edit', filePath, op.toLowerCase());
+          }
         }
 
         if (delta?.tool_calls) {
@@ -125,8 +138,23 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
             const existing = toolCalls.get(idx)!;
             if (tc.id) existing.id = tc.id;
             if (tc.type) existing.type = tc.type;
-            if (tc.function?.name) existing.function.name += tc.function.name;
-            if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
+            if (tc.function?.name) {
+              existing.function.name += tc.function.name;
+              onToolActivity?.(existing.function.name);
+            }
+            if (tc.function?.arguments) {
+              existing.function.arguments += tc.function.arguments;
+              try {
+                const args = JSON.parse(existing.function.arguments);
+                const filePath = args.file_path || args.filePath || args.path;
+                const operation = args.operation || args.action || args.type;
+                if (filePath) {
+                  onToolActivity?.(existing.function.name, filePath, operation);
+                }
+              } catch {
+                // Arguments not complete yet, will parse when done
+              }
+            }
           }
         }
       } catch {
