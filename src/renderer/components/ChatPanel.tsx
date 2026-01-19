@@ -18,6 +18,7 @@ import {
 import type { OpenFile } from '../pages/MainLayout';
 import { ModelSelector } from './ModelSelector';
 import { parseSurgicalEdits, applyMultipleEdits, type SurgicalEdit } from '../lib/surgical-edit';
+import { streamToolCompletion } from '../lib/stream-completion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -264,6 +265,7 @@ export function ChatPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [keystoneMode, setKeystoneMode] = useState(false);
+  const [appliedMessageIds, setAppliedMessageIds] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -433,41 +435,36 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         
         while (toolLoopCount < maxToolLoops) {
           const forceFinish = toolLoopCount >= 12;
-          console.log('[Keystone] Loop', toolLoopCount + 1, 'messages:', conversationMessages.length, forceFinish ? '(forcing finish)' : '');
-          console.log('[Keystone] Sending messages:', JSON.stringify(conversationMessages.slice(-3)));
+          const payloadSize = JSON.stringify(conversationMessages).length;
+          console.log('[Keystone] Loop', toolLoopCount + 1, 'messages:', conversationMessages.length, 'payload size:', Math.round(payloadSize / 1024), 'KB', forceFinish ? '(forcing finish)' : '');
+          console.log('[Keystone] Last 2 messages:', JSON.stringify(conversationMessages.slice(-2)).slice(0, 1000));
           
           const startTime = Date.now();
-          console.log('[Keystone] Starting API call at:', new Date().toISOString());
+          console.log('[Keystone] Starting streaming API call at:', new Date().toISOString());
           
-          const toolResponse = await fetch('https://api.aiassist.net/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${apiKey}`,
-              ...(provider && { 'X-AiAssist-Provider': provider }),
+          const messagesForRequest = forceFinish 
+            ? [...conversationMessages, { role: 'system', content: 'You have gathered the file content. Now PRODUCE your response with the surgical edit format. Do not request more tools.' }]
+            : conversationMessages;
+          
+          const toolData = await streamToolCompletion({
+            apiKey,
+            model: model || 'llama-3.3-70b-versatile',
+            messages: messagesForRequest,
+            tools: forceFinish ? undefined : LLM_TOOLS,
+            tool_choice: forceFinish ? undefined : 'auto',
+            temperature,
+            maxTokens,
+            provider: provider || undefined,
+            onProgress: (text) => {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMessageId ? { ...m, content: text } : m
+                )
+              );
             },
-            body: JSON.stringify({
-              model: model || 'llama-3.3-70b-versatile',
-              messages: forceFinish 
-                ? [...conversationMessages, { role: 'system', content: 'STOP using tools now. You have gathered enough information. Produce your final response with code suggestions.' }]
-                : conversationMessages,
-              tools: forceFinish ? undefined : LLM_TOOLS,
-              tool_choice: forceFinish ? undefined : 'auto',
-              temperature,
-              max_tokens: maxTokens,
-              max_completion_tokens: maxTokens,
-            }),
           });
           
-          console.log('[Keystone] API call completed in', Date.now() - startTime, 'ms, status:', toolResponse.status);
-          
-          if (!toolResponse.ok) {
-            const errorData = await toolResponse.json().catch(() => ({}));
-            console.log('[Keystone] API error:', errorData);
-            throw new Error(errorData.detail || errorData.error?.message || `API request failed (${toolResponse.status})`);
-          }
-          
-          const toolData = await toolResponse.json();
+          console.log('[Keystone] Streaming API call completed in', Date.now() - startTime, 'ms');
           console.log('[Keystone] Response received:', JSON.stringify(toolData).slice(0, 500));
           
           const choice = toolData.choices?.[0];
@@ -487,7 +484,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
           
           conversationMessages.push({
             role: 'assistant',
-            content: choice.message.content || null,
+            content: choice.message.content || undefined,
             tool_calls: toolCalls,
           });
           
@@ -756,30 +753,32 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
     }
   };
 
-  const renderMessageContent = (content: string) => {
+  const renderMessageContent = (content: string, messageId: string) => {
     const { edits, explanation } = parseSurgicalEdits(content);
     const parts = parseCodeBlocks(explanation);
+    const isApplied = appliedMessageIds.has(messageId);
     
     return (
       <>
         {edits.length > 0 && (
           <div className={`my-2 p-3 rounded-lg border ${
-            keystoneMode 
+            keystoneMode || isApplied
               ? 'bg-green-500/10 border-green-500/30' 
               : 'bg-amber-500/10 border-amber-500/30'
           }`}>
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <FileEdit className={`w-4 h-4 ${keystoneMode ? 'text-green-400' : 'text-amber-400'}`} />
-                <span className={`text-sm font-medium ${keystoneMode ? 'text-green-400' : 'text-amber-400'}`}>
-                  {keystoneMode ? 'Applied' : 'Surgical Edits'} ({edits.length})
+                <FileEdit className={`w-4 h-4 ${keystoneMode || isApplied ? 'text-green-400' : 'text-amber-400'}`} />
+                <span className={`text-sm font-medium ${keystoneMode || isApplied ? 'text-green-400' : 'text-amber-400'}`}>
+                  {keystoneMode || isApplied ? 'Applied' : 'Surgical Edits'} ({edits.length})
                 </span>
               </div>
-              {!keystoneMode && (
+              {!keystoneMode && !isApplied && (
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     console.log('[Apply All] Button clicked, edits:', edits);
-                    applySurgicalEdits(edits);
+                    await applySurgicalEdits(edits);
+                    setAppliedMessageIds(prev => new Set(prev).add(messageId));
                   }}
                   className="flex items-center gap-1 px-3 py-1 text-xs bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 rounded-lg transition-colors font-medium"
                 >
@@ -1026,7 +1025,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               >
                 <div className="text-sm">
                   {message.role === 'assistant' 
-                    ? renderMessageContent(message.content)
+                    ? renderMessageContent(message.content, message.id)
                     : <div className="prose prose-invert prose-sm max-w-none">
                         <ReactMarkdown>{message.content}</ReactMarkdown>
                       </div>
