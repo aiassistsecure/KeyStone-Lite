@@ -10,7 +10,7 @@
 
   <!-- Favicons / PWA basics -->
   <meta name="theme-color" content="#07070a">
-  <link rel="icon" href="favicon.ico">
+  <link rel="icon" href="icon.ico">
 
   <!-- Open Graph -->
   <meta property="og:title" content="Keystone Lite - Local-First AI Code Editor">
@@ -26,7 +26,7 @@
   <meta name="twitter:title" content="Keystone Lite - Local-First AI Code Editor">
   <meta name="twitter:description"
     content="Precise, auditable AI edits. BYO models, scoped context, and line-based operations you can review or auto-apply.">
-  <meta name="twitter:image" content="icon.png">
+  <meta name="twitter:image" content="https://aiassist.net/og-image.jpg">
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -75,7 +75,7 @@
       <div class="hero-bg"></div>
 
       <div class="hero-content">
-        <img width="33%" src="logo.png" alt="Keystone Lite logo" style="display:block;margin:0 auto;" />
+        <img class="hero-logo" src="logo.png" alt="Keystone Lite logo" />
         <div class="badge-group" aria-label="Product highlights">
           <span class="badge">Local-first</span>
           <span class="badge">Surgical edits</span>
@@ -582,6 +582,7 @@ export async function signIn(email: string, password: string) {
         <h2 id="download-title">Get the latest build</h2>
         <p>
           Download Keystone Lite and keep your workflow local-first, reviewable, and under your control.
+          (Replace the links below with your real release URLs.)
         </p>
 
         <div class="hero-cta" aria-label="Download options">
@@ -592,10 +593,13 @@ export async function signIn(email: string, password: string) {
               <path d="M5 12h14M12 5l7 7-7 7" />
             </svg>
           </a>
-          <a class="btn btn-secondary btn-lg" href="https://github.com/aiassistsecure/KeyStone-Lite" aria-label="Download for Windows">Download for Windows</a>
+          <a class="btn btn-secondary btn-lg" href="#" aria-label="Download for Windows">Download for Windows</a>
+          <a class="btn btn-secondary btn-lg" href="#" aria-label="Download for Linux">Download for Linux</a>
         </div>
 
-
+        <p style="margin-top:16px;color:rgba(200,200,210,.62);font-size:13.5px">
+          Tip: link to GitHub Releases or your website’s downloads page.
+        </p>
       </div>
     </section>
   </main>
