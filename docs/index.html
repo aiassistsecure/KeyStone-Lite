@@ -1,763 +1,629 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KeyStone by AiAssist Secure - AI-Powered Code Editor</title>
-  <meta name="description" content="Keystone is a desktop AI code editor with surgical editing, multi-provider LLM support, and intelligent file context awareness.">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --cyan: #22d3ee;
-      --purple: #a855f7;
-      --amber: #f59e0b;
-      --bg-dark: #0a0a0f;
-      --bg-card: #111118;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: var(--bg-dark);
-      color: #fff;
-      line-height: 1.6;
-      overflow-x: hidden;
-    }
-
-    .gradient-text {
-      background: linear-gradient(135deg, var(--cyan), var(--purple));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .gradient-text-amber {
-      background: linear-gradient(135deg, var(--amber), #ef4444);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 0 24px;
-    }
-
-    /* Hero Section */
-    .hero {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-      padding: 80px 24px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .hero::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 800px;
-      height: 800px;
-      background: radial-gradient(circle, rgba(34, 211, 238, 0.1) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    .hero::after {
-      content: '';
-      position: absolute;
-      bottom: 0;
-      right: 0;
-      width: 600px;
-      height: 600px;
-      background: radial-gradient(circle, rgba(168, 85, 247, 0.1) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 16px;
-      background: rgba(34, 211, 238, 0.1);
-      border: 1px solid rgba(34, 211, 238, 0.3);
-      border-radius: 100px;
-      font-size: 14px;
-      color: var(--cyan);
-      margin-bottom: 32px;
-    }
-
-    .badge svg {
-      width: 16px;
-      height: 16px;
-    }
-
-    .hero h1 {
-      font-size: clamp(48px, 8vw, 80px);
-      font-weight: 800;
-      letter-spacing: -2px;
-      margin-bottom: 24px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .hero p {
-      font-size: 20px;
-      color: #9ca3af;
-      max-width: 600px;
-      margin-bottom: 48px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .cta-group {
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-      justify-content: center;
-      position: relative;
-      z-index: 1;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 16px 32px;
-      border-radius: 12px;
-      font-size: 16px;
-      font-weight: 600;
-      text-decoration: none;
-      transition: all 0.3s ease;
-      cursor: pointer;
-      border: none;
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, var(--cyan), var(--purple));
-      color: #000;
-    }
-
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 20px 40px rgba(34, 211, 238, 0.3);
-    }
-
-    .btn-secondary {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: #fff;
-    }
-
-    .btn-secondary:hover {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: rgba(255, 255, 255, 0.2);
-    }
-
-    /* Screenshot */
-    .screenshot-wrapper {
-      margin-top: 80px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .screenshot {
-      max-width: 100%;
-      border-radius: 16px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
-    }
-
-    /* Features Section */
-    .features {
-      padding: 120px 24px;
-      position: relative;
-    }
-
-    .section-header {
-      text-align: center;
-      margin-bottom: 80px;
-    }
-
-    .section-header h2 {
-      font-size: 48px;
-      font-weight: 700;
-      margin-bottom: 16px;
-    }
-
-    .section-header p {
-      font-size: 18px;
-      color: #9ca3af;
-      max-width: 500px;
-      margin: 0 auto;
-    }
-
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-      gap: 24px;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    .feature-card {
-      background: var(--bg-card);
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 20px;
-      padding: 32px;
-      transition: all 0.3s ease;
-    }
-
-    .feature-card:hover {
-      border-color: rgba(34, 211, 238, 0.3);
-      transform: translateY(-4px);
-    }
-
-    .feature-icon {
-      width: 56px;
-      height: 56px;
-      border-radius: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 24px;
-      font-size: 24px;
-    }
-
-    .feature-icon.cyan { background: rgba(34, 211, 238, 0.15); }
-    .feature-icon.purple { background: rgba(168, 85, 247, 0.15); }
-    .feature-icon.amber { background: rgba(245, 158, 11, 0.15); }
-    .feature-icon.green { background: rgba(34, 197, 94, 0.15); }
-
-    .feature-card h3 {
-      font-size: 20px;
-      font-weight: 600;
-      margin-bottom: 12px;
-    }
-
-    .feature-card p {
-      color: #9ca3af;
-      font-size: 15px;
-    }
-
-    /* Modes Section */
-    .modes {
-      padding: 120px 24px;
-      background: linear-gradient(180deg, transparent, rgba(34, 211, 238, 0.02), transparent);
-    }
-
-    .modes-container {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-      gap: 48px;
-      max-width: 1000px;
-      margin: 0 auto;
-    }
-
-    .mode-card {
-      background: var(--bg-card);
-      border-radius: 24px;
-      padding: 48px;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .mode-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 4px;
-    }
-
-    .mode-card.debug::before {
-      background: linear-gradient(90deg, var(--cyan), var(--purple));
-    }
-
-    .mode-card.keystone::before {
-      background: linear-gradient(90deg, var(--amber), #ef4444);
-    }
-
-    .mode-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 12px;
-      border-radius: 8px;
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 24px;
-    }
-
-    .mode-card.debug .mode-badge {
-      background: rgba(34, 211, 238, 0.15);
-      color: var(--cyan);
-    }
-
-    .mode-card.keystone .mode-badge {
-      background: rgba(245, 158, 11, 0.15);
-      color: var(--amber);
-    }
-
-    .mode-card h3 {
-      font-size: 28px;
-      font-weight: 700;
-      margin-bottom: 16px;
-    }
-
-    .mode-card p {
-      color: #9ca3af;
-      font-size: 16px;
-      margin-bottom: 32px;
-    }
-
-    .mode-features {
-      list-style: none;
-    }
-
-    .mode-features li {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 12px 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      font-size: 15px;
-    }
-
-    .mode-features li:last-child {
-      border-bottom: none;
-    }
-
-    .mode-features svg {
-      width: 20px;
-      height: 20px;
-      flex-shrink: 0;
-    }
-
-    .mode-card.debug .mode-features svg {
-      color: var(--cyan);
-    }
-
-    .mode-card.keystone .mode-features svg {
-      color: var(--amber);
-    }
-
-    /* Providers Section */
-    .providers {
-      padding: 120px 24px;
-    }
-
-    .providers-logos {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 48px;
-      flex-wrap: wrap;
-      margin-top: 48px;
-    }
-
-    .provider-logo {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-      opacity: 0.6;
-      transition: opacity 0.3s ease;
-    }
-
-    .provider-logo:hover {
-      opacity: 1;
-    }
-
-    .provider-logo .icon {
-      width: 64px;
-      height: 64px;
-      border-radius: 16px;
-      background: rgba(255, 255, 255, 0.05);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 28px;
-    }
-
-    .provider-logo span {
-      font-size: 14px;
-      color: #9ca3af;
-    }
-
-    /* Tech Specs */
-    .specs {
-      padding: 120px 24px;
-      background: var(--bg-card);
-    }
-
-    .specs-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 32px;
-      max-width: 800px;
-      margin: 48px auto 0;
-    }
-
-    .spec-item {
-      text-align: center;
-    }
-
-    .spec-value {
-      font-size: 48px;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-
-    .spec-label {
-      font-size: 14px;
-      color: #9ca3af;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
-    /* CTA Section */
-    .cta-section {
-      padding: 120px 24px;
-      text-align: center;
-      position: relative;
-    }
-
-    .cta-section::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: radial-gradient(ellipse at center, rgba(34, 211, 238, 0.1) 0%, transparent 70%);
-      pointer-events: none;
-    }
-
-    .cta-section h2 {
-      font-size: 48px;
-      font-weight: 700;
-      margin-bottom: 24px;
-      position: relative;
-      z-index: 1;
-    }
-
-    .cta-section p {
-      font-size: 18px;
-      color: #9ca3af;
-      margin-bottom: 48px;
-      position: relative;
-      z-index: 1;
-    }
-
-    /* Footer */
-    footer {
-      padding: 48px 24px;
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
-      text-align: center;
-    }
-
-    footer p {
-      color: #6b7280;
-      font-size: 14px;
-    }
-
-    footer a {
-      color: var(--cyan);
-      text-decoration: none;
-    }
-
-    /* Responsive */
-    @media (max-width: 768px) {
-      .hero h1 {
-        font-size: 40px;
-      }
-
-      .features-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .modes-container {
-        grid-template-columns: 1fr;
-      }
-
-      .mode-card {
-        padding: 32px;
-      }
-    }
-  </style>
+  <title>Keystone Lite - Local-First AI Code Editor with Surgical Edits</title>
+  <meta name="description"
+    content="Keystone Lite is a local-first AI code editor for developers who want precise, auditable changes. BYO models, scoped file access, and line-based edits you can review or auto-apply.">
+
+  <!-- Favicons / PWA basics -->
+  <meta name="theme-color" content="#07070a">
+  <link rel="icon" href="favicon.ico">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Keystone Lite - Local-First AI Code Editor">
+  <meta property="og:description"
+    content="A local-first AI code editor for precise, auditable changes. BYO models, scoped file access, and line-based edits you can review or auto-apply.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://aiassist.net">
+  <meta property="og:image" content="icon.png">
+  <meta property="og:site_name" content="Keystone Lite">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Keystone Lite - Local-First AI Code Editor">
+  <meta name="twitter:description"
+    content="Precise, auditable AI edits. BYO models, scoped context, and line-based operations you can review or auto-apply.">
+  <meta name="twitter:image" content="https://aiassist.net/og-image.jpg">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
 
-  <!-- Hero Section -->
-  <section class="hero">
-    <div class="badge">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-      </svg>
-      Desktop AI Code Editor
-    </div>
-    <h1>
-      <span>
-        <img style="width: 33%;margin-bottom:-10%;" src="https://i.ibb.co/KppwbCF9/logo.png"/><br>
-      </span>
-      <span class="gradient-text">Keystone</span>
-      <br>by AiAssist Secure
-    </h1>
-    <p>
-      AI-powered code editing with surgical precision. Debug, improve, and transform your code with intelligent context awareness.
-    </p>
-    <div class="cta-group">
-      <a href="#features" class="btn btn-primary">
-        Explore Features
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M5 12h14M12 5l7 7-7 7"/>
-        </svg>
+  <!-- Top Nav -->
+  <header class="topbar" id="top">
+    <div class="container topbar-inner">
+      <a class="brand" href="#top" aria-label="Keystone Lite home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">Keystone Lite</span>
       </a>
-      <a href="#" class="btn btn-secondary">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-        </svg>
-        Download for Windows
+
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#who-its-for">Who it’s for</a>
+        <a href="#why-keystone-lite">Why it’s different</a>
+        <a href="#testimonials">Testimonials</a>
+        <a href="#download">Download</a>
+      </nav>
+
+      <div class="topbar-cta">
+        <a href="#why-keystone-lite" class="btn btn-secondary">Product</a>
+        <a href="#download" class="btn btn-primary">
+          Get the latest build
+          <svg aria-hidden="true" focusable="false" width="18" height="18" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14M12 5l7 7-7 7" />
+          </svg>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- Hero -->
+    <section class="hero hero-premium" aria-labelledby="hero-title">
+      <div class="hero-bg"></div>
+
+      <div class="hero-content">
+        <img width="33%" src="logo.png" alt="Keystone Lite logo" style="display:block;margin:0 auto;" />
+        <div class="badge-group" aria-label="Product highlights">
+          <span class="badge">Local-first</span>
+          <span class="badge">Surgical edits</span>
+          <span class="badge">BYO model</span>
+          <span class="badge badge-hot">Vibe-coder approved</span>
+        </div>
+
+        <h1 id="hero-title">
+          Ship like a <span class="gradient-text">vibe coder</span>.<br>
+          Edit like a <span class="gradient-text">surgeon</span>.
+        </h1>
+
+        <p class="hero-subtitle">
+          Keystone Lite is the local-first AI code editor built for developers who want <strong>precision</strong>,
+          <strong>auditability</strong>, and <strong>control</strong>.
+          Bring your own model, scope the context, and apply line-based edits you can review or auto-apply.
+        </p>
+
+        <div class="hero-microproof" aria-label="Quick product proof points">
+          <div class="microproof-item">
+            <span class="microproof-kicker">No vibe tax</span>
+            <span class="microproof-text">Cleaner diffs. Fewer regressions.</span>
+          </div>
+          <div class="microproof-item">
+            <span class="microproof-kicker">Scoped context</span>
+            <span class="microproof-text">Only the files you allow.</span>
+          </div>
+          <div class="microproof-item">
+            <span class="microproof-kicker">Auditable ops</span>
+            <span class="microproof-text">REPLACE / INSERT / DELETE by line.</span>
+          </div>
+        </div>
+
+        <div class="hero-cta">
+          <a href="#download" class="btn btn-primary btn-lg">
+            Download the latest build
+            <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </a>
+          <a href="#why-keystone-lite" class="btn btn-secondary btn-lg">See what’s different</a>
+        </div>
+
+        <!-- Premium hero “product preview” -->
+        <div class="hero-preview glass" role="img" aria-label="Product preview showing line-based edit operations">
+          <div class="preview-top">
+            <div class="preview-dots" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </div>
+            <div class="preview-title">Keystone Lite • Surgical edit preview</div>
+            <div class="preview-pill">Scoped context</div>
+          </div>
+
+          <div class="preview-body" aria-hidden="true">
+            <div class="preview-col">
+              <div class="preview-label">Operation</div>
+              <div class="preview-chip">REPLACE lines 42-57</div>
+              <div class="preview-chip subtle">INSERT after line 108</div>
+              <div class="preview-chip subtle">DELETE lines 210-214</div>
+            </div>
+
+            <div class="preview-code">
+              <pre><code>&lt;&lt;&lt;EDIT src/auth.ts&gt;&gt;&gt;
+&lt;&lt;&lt;REPLACE lines 42-57&gt;&gt;&gt;
+export async function signIn(email: string, password: string) {
+  const res = await api.post("/auth/login", { email, password });
+  return res.data;
+}
+&lt;&lt;&lt;END&gt;&gt;&gt;</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Who it's for -->
+    <section id="who-its-for" aria-labelledby="who-title">
+      <div class="container">
+        <header class="section-header">
+          <h2 id="who-title">Built for developers who want control</h2>
+          <p>
+            Keystone Lite keeps you in charge: you decide what files the model can see, you review the diff, and you
+            apply edits with line-based operations.
+          </p>
+        </header>
+
+        <div class="features-grid" role="list" aria-label="Audience cards">
+          <article class="feature-card" role="listitem">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+            </div>
+            <h3>Productive builders</h3>
+            <p>Move fast without losing confidence. Keep diffs readable and changes scoped.</p>
+            <ul class="feature-list">
+              <li><strong>Smaller changes</strong> that are easy to review</li>
+              <li><strong>Repeatable prompts</strong> with predictable output</li>
+              <li><strong>Less churn</strong> in unrelated files</li>
+            </ul>
+          </article>
+
+          <article class="feature-card" role="listitem">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 12l2 2 4-4" />
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+              </svg>
+            </div>
+            <h3>Security-minded teams</h3>
+            <p>Local-first by design. Scope access and keep sensitive repos out of cloud prompts.</p>
+            <div class="pill-row" aria-label="Security highlights">
+              <span class="pill">Local-first workflow</span>
+              <span class="pill">Scoped file access</span>
+              <span class="pill">Auditable operations</span>
+            </div>
+          </article>
+
+          <article class="feature-card" role="listitem">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7H4Z" />
+                <path d="M14 3v4" />
+                <path d="M10 3v4" />
+                <path d="M8 11h8" />
+                <path d="M8 15h6" />
+              </svg>
+            </div>
+            <h3>Maintainers & reviewers</h3>
+            <p>Line-based ops make it obvious what changed, where, and why.</p>
+            <ul class="feature-list">
+              <li><strong>REPLACE / INSERT / DELETE</strong> by line number</li>
+              <li><strong>Reviewable output</strong> before applying</li>
+              <li><strong>Less guesswork</strong> during code review</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Why it's different -->
+    <section id="why-keystone-lite" aria-labelledby="why-title">
+      <div class="container">
+        <header class="section-header">
+          <h2 id="why-title">Why Keystone Lite is different</h2>
+          <p>
+            Most AI tooling optimizes for “wow.” Keystone Lite optimizes for correctness, traceability, and
+            control—without sacrificing speed.
+          </p>
+        </header>
+
+        <div class="features-grid" role="list" aria-label="Feature cards">
+          <article class="feature-card" role="listitem">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v20" />
+                <path d="M2 12h20" />
+                <path d="M7 7h10v10H7z" />
+              </svg>
+            </div>
+            <h3>Surgical edits, not rewrites</h3>
+            <p>Get precise, line-based operations that map cleanly to diffs and PR reviews.</p>
+            <div class="pill-row">
+              <span class="pill">REPLACE lines X-Y</span>
+              <span class="pill">INSERT after line X</span>
+              <span class="pill">DELETE lines X-Y</span>
+            </div>
+          </article>
+
+          <article class="feature-card" role="listitem">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path
+                  d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
+                <path d="M3.3 7l8.7 5 8.7-5" />
+                <path d="M12 22V12" />
+              </svg>
+            </div>
+            <h3>Bring your own model</h3>
+            <p>Use the model that fits your workflow. Swap providers without changing how you review edits.</p>
+            <ul class="feature-list">
+              <li><strong>Provider flexibility</strong> (local or hosted)</li>
+              <li><strong>Consistent edit format</strong> across models</li>
+              <li><strong>Predictable output</strong> for automation</li>
+            </ul>
+          </article>
+
+          <article class="feature-card" role="listitem">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 6h13" />
+                <path d="M8 12h13" />
+                <path d="M8 18h13" />
+                <path d="M3 6h.01" />
+                <path d="M3 12h.01" />
+                <path d="M3 18h.01" />
+              </svg>
+            </div>
+            <h3>Scoped context by default</h3>
+            <p>Only the files you explicitly allow are included. No accidental repo-wide context leaks.</p>
+            <div class="pill-row">
+              <span class="pill">Whitelist files</span>
+              <span class="pill">Tight prompts</span>
+              <span class="pill">Safer iteration</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features" id="features">
+      <div class="container">
+        <div class="section-header">
+          <h2 class="gradient-text">Core Features</h2>
+          <p>Everything you need for intelligent code editing</p>
+        </div>
+
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon cyan">🎯</div>
+            <h3>Surgical Code Editing</h3>
+            <p>Line-based insert, replace, and delete operations. The AI makes precise changes without touching
+              unrelated code.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon purple">🧠</div>
+            <h3>11+ LLM Providers</h3>
+            <p>Access Groq, OpenAI, Anthropic, Gemini, Mistral, and our decentralized PIN network through a single API
+              key.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon amber">📁</div>
+            <h3>File Context Awareness</h3>
+            <p>Add files to context with line numbers. The AI understands your entire codebase structure for better
+              suggestions.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon green">⚡</div>
+            <h3>Real-Time Streaming</h3>
+            <p>Watch code generate in real-time with streaming responses. See the AI think and build your solution live.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon cyan">🖱️</div>
+            <h3>Right-Click AI Actions</h3>
+            <p>Select code, right-click, and choose from Explain, Fix, Improve, or Document. Context menu integration
+              for fast workflows.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon purple">📝</div>
+            <h3>Monaco Editor</h3>
+            <p>The same editor that powers VS Code. Syntax highlighting for 50+ languages, IntelliSense, and keyboard
+              shortcuts.</p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon amber">🔒</div>
+            <h3>Secure File Operations</h3>
+            <p>All file access is scoped to your project directory. The AI cannot read or write outside your workspace.
+            </p>
+          </div>
+
+          <div class="feature-card">
+            <div class="feature-icon green">💬</div>
+            <h3>Markdown Chat Rendering</h3>
+            <p>Beautiful formatted responses with code blocks, syntax highlighting, and inline code. Easy to read, easy
+              to copy.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dual Modes Section -->
+    <section class="modes">
+      <div class="container">
+        <div class="section-header">
+          <h2>Two Powerful <span class="gradient-text">Modes</span></h2>
+          <p>Choose your workflow style</p>
+        </div>
+
+        <div class="modes-container">
+          <div class="mode-card debug">
+            <div class="mode-badge">Debug Mode</div>
+            <h3 class="gradient-text">Review Before Apply</h3>
+            <p>Perfect for learning and critical code. Preview every change before it touches your files.</p>
+            <ul class="mode-features">
+              <li>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                See exact line changes before applying
+              </li>
+              <li>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Collapsible code preview boxes
+              </li>
+              <li>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                One-click "Apply All" button
+              </li>
+              <li>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Learn from AI's reasoning
+              </li>
+            </ul>
+          </div>
+
+          <div class="mode-card keystone">
+            <div class="mode-badge">Keystone Mode</div>
+            <h3 class="gradient-text-amber">Auto-Apply Edits</h3>
+            <p>Maximum speed for experienced developers. Edits apply automatically as the AI responds.</p>
+            <ul class="mode-features">
+              <li>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Zero-click code application
+              </li>
+              <li>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Instant file updates
+              </li>
+              <li>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Rapid iteration workflow
+              </li>
+              <li>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Visual applied confirmation
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Providers Section -->
+    <section class="providers">
+      <div class="container">
+        <div class="section-header">
+          <h2>Powered by <span class="gradient-text">11+ Providers</span></h2>
+          <p>Cloud LLMs and decentralized PIN network through one API</p>
+        </div>
+
+        <div class="providers-logos">
+          <div class="provider-logo">
+            <div class="icon">⚡</div>
+            <span>Groq</span>
+          </div>
+          <div class="provider-logo">
+            <div class="icon">🤖</div>
+            <span>OpenAI</span>
+          </div>
+          <div class="provider-logo">
+            <div class="icon">🧠</div>
+            <span>Anthropic</span>
+          </div>
+          <div class="provider-logo">
+            <div class="icon">💎</div>
+            <span>Gemini</span>
+          </div>
+          <div class="provider-logo">
+            <div class="icon">🌊</div>
+            <span>Mistral</span>
+          </div>
+          <div class="provider-logo">
+            <div class="icon">🔗</div>
+            <span>PIN Network</span>
+          </div>
+          <div class="provider-logo">
+            <div class="icon">+5</div>
+            <span>More</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tech Specs -->
+    <section class="specs">
+      <div class="container">
+        <div class="section-header">
+          <h2>Built for <span class="gradient-text">Performance</span></h2>
+        </div>
+
+        <div class="specs-grid">
+          <div class="spec-item">
+            <div class="spec-value gradient-text">50+</div>
+            <div class="spec-label">Languages Supported</div>
+          </div>
+          <div class="spec-item">
+            <div class="spec-value gradient-text">11+</div>
+            <div class="spec-label">AI Providers</div>
+          </div>
+          <div class="spec-item">
+            <div class="spec-value gradient-text">3</div>
+            <div class="spec-label">Edit Operations</div>
+          </div>
+          <div class="spec-item">
+            <div class="spec-value gradient-text">1</div>
+            <div class="spec-label">API Key Needed</div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- Testimonials -->
+    <section id="testimonials" aria-labelledby="testimonials-title">
+      <div class="container">
+        <header class="section-header">
+          <h2 id="testimonials-title">What developers say</h2>
+          <p>Real-world feedback from people who care about diffs, reviews, and shipping safely.</p>
+        </header>
+
+        <div class="testimonials-carousel" data-testimonials aria-label="Testimonials carousel">
+          <div class="testimonials-viewport">
+            <div class="testimonials-track">
+              <div class="testimonial-slide">
+                <article class="testimonial-card">
+                  <p class="testimonial-quote">
+                    “The line-based ops are the killer feature. I can review changes like a normal PR instead of hunting
+                    for what the model touched.”
+                  </p>
+                  <div class="testimonial-meta">
+                    <div>
+                      <div class="testimonial-name">A. Patel</div>
+                      <div class="testimonial-title">Staff Engineer</div>
+                    </div>
+                    <span class="testimonial-tag">Reviewable diffs</span>
+                  </div>
+                </article>
+              </div>
+
+              <div class="testimonial-slide">
+                <article class="testimonial-card">
+                  <p class="testimonial-quote">
+                    “Scoped context makes this usable at work. I can keep sensitive files out, still get help, and stay
+                    compliant.”
+                  </p>
+                  <div class="testimonial-meta">
+                    <div>
+                      <div class="testimonial-name">M. Chen</div>
+                      <div class="testimonial-title">Security Engineer</div>
+                    </div>
+                    <span class="testimonial-tag">Scoped access</span>
+                  </div>
+                </article>
+              </div>
+
+              <div class="testimonial-slide">
+                <article class="testimonial-card">
+                  <p class="testimonial-quote">
+                    “It’s the first AI editor that feels like a tool, not a slot machine. Predictable edits, clean
+                    output, fast iteration.”
+                  </p>
+                  <div class="testimonial-meta">
+                    <div>
+                      <div class="testimonial-name">J. Rivera</div>
+                      <div class="testimonial-title">Indie Developer</div>
+                    </div>
+                    <span class="testimonial-tag">Predictable output</span>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </div>
+
+          <div class="testimonials-dots" role="tablist" aria-label="Select testimonial">
+            <button class="testimonials-dot" type="button" aria-selected="true" aria-label="Testimonial 1"></button>
+            <button class="testimonials-dot" type="button" aria-selected="false" aria-label="Testimonial 2"></button>
+            <button class="testimonials-dot" type="button" aria-selected="false" aria-label="Testimonial 3"></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Download CTA -->
+    <section id="download" class="cta" aria-labelledby="download-title">
+      <div class="container cta-content">
+        <h2 id="download-title">Get the latest build</h2>
+        <p>
+          Download Keystone Lite and keep your workflow local-first, reviewable, and under your control.
+        </p>
+
+        <div class="hero-cta" aria-label="Download options">
+          <a class="btn btn-primary btn-lg" href="#" aria-label="Download for macOS">
+            Download for macOS
+            <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </a>
+          <a class="btn btn-secondary btn-lg" href="https://github.com/aiassistsecure/KeyStone-Lite" aria-label="Download for Windows">Download for Windows</a>
+        </div>
+
+
+      </div>
+    </section>
+  </main>
+
+  <footer aria-label="Footer">
+    <div class="footer-content">
+      <a class="brand" href="#top" aria-label="Back to top">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">Keystone Lite</span>
       </a>
-    </div>
-  </section>
 
-  <!-- Features Section -->
-  <section class="features" id="features">
-    <div class="container">
-      <div class="section-header">
-        <h2 class="gradient-text">Core Features</h2>
-        <p>Everything you need for intelligent code editing</p>
-      </div>
+      <ul class="footer-links" aria-label="Footer links">
+        <li><a href="#why-keystone-lite">Product</a></li>
+        <li><a href="#testimonials">Testimonials</a></li>
+        <li><a href="#download">Download</a></li>
+      </ul>
 
-      <div class="features-grid">
-        <div class="feature-card">
-          <div class="feature-icon cyan">🎯</div>
-          <h3>Surgical Code Editing</h3>
-          <p>Line-based insert, replace, and delete operations. The AI makes precise changes without touching unrelated code.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon purple">🧠</div>
-          <h3>11+ LLM Providers</h3>
-          <p>Access Groq, OpenAI, Anthropic, Gemini, Mistral, and our decentralized PIN network through a single API key.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon amber">📁</div>
-          <h3>File Context Awareness</h3>
-          <p>Add files to context with line numbers. The AI understands your entire codebase structure for better suggestions.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon green">⚡</div>
-          <h3>Real-Time Streaming</h3>
-          <p>Watch code generate in real-time with streaming responses. See the AI think and build your solution live.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon cyan">🖱️</div>
-          <h3>Right-Click AI Actions</h3>
-          <p>Select code, right-click, and choose from Explain, Fix, Improve, or Document. Context menu integration for fast workflows.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon purple">📝</div>
-          <h3>Monaco Editor</h3>
-          <p>The same editor that powers VS Code. Syntax highlighting for 50+ languages, IntelliSense, and keyboard shortcuts.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon amber">🔒</div>
-          <h3>Secure File Operations</h3>
-          <p>All file access is scoped to your project directory. The AI cannot read or write outside your workspace.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon green">💬</div>
-          <h3>Markdown Chat Rendering</h3>
-          <p>Beautiful formatted responses with code blocks, syntax highlighting, and inline code. Easy to read, easy to copy.</p>
-        </div>
+      <div class="footer-copyright">
+        © <span id="year"></span> Keystone Lite. All rights reserved.
       </div>
     </div>
-  </section>
-
-  <!-- Dual Modes Section -->
-  <section class="modes">
-    <div class="container">
-      <div class="section-header">
-        <h2>Two Powerful <span class="gradient-text">Modes</span></h2>
-        <p>Choose your workflow style</p>
-      </div>
-
-      <div class="modes-container">
-        <div class="mode-card debug">
-          <div class="mode-badge">Debug Mode</div>
-          <h3 class="gradient-text">Review Before Apply</h3>
-          <p>Perfect for learning and critical code. Preview every change before it touches your files.</p>
-          <ul class="mode-features">
-            <li>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              See exact line changes before applying
-            </li>
-            <li>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              Collapsible code preview boxes
-            </li>
-            <li>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              One-click "Apply All" button
-            </li>
-            <li>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              Learn from AI's reasoning
-            </li>
-          </ul>
-        </div>
-
-        <div class="mode-card keystone">
-          <div class="mode-badge">Keystone Mode</div>
-          <h3 class="gradient-text-amber">Auto-Apply Edits</h3>
-          <p>Maximum speed for experienced developers. Edits apply automatically as the AI responds.</p>
-          <ul class="mode-features">
-            <li>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              Zero-click code application
-            </li>
-            <li>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              Instant file updates
-            </li>
-            <li>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              Rapid iteration workflow
-            </li>
-            <li>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              Visual applied confirmation
-            </li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Providers Section -->
-  <section class="providers">
-    <div class="container">
-      <div class="section-header">
-        <h2>Powered by <span class="gradient-text">11+ Providers</span></h2>
-        <p>Cloud LLMs and decentralized PIN network through one API</p>
-      </div>
-
-      <div class="providers-logos">
-        <div class="provider-logo">
-          <div class="icon">⚡</div>
-          <span>Groq</span>
-        </div>
-        <div class="provider-logo">
-          <div class="icon">🤖</div>
-          <span>OpenAI</span>
-        </div>
-        <div class="provider-logo">
-          <div class="icon">🧠</div>
-          <span>Anthropic</span>
-        </div>
-        <div class="provider-logo">
-          <div class="icon">💎</div>
-          <span>Gemini</span>
-        </div>
-        <div class="provider-logo">
-          <div class="icon">🌊</div>
-          <span>Mistral</span>
-        </div>
-        <div class="provider-logo">
-          <div class="icon">🔗</div>
-          <span>PIN Network</span>
-        </div>
-        <div class="provider-logo">
-          <div class="icon">+5</div>
-          <span>More</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Tech Specs -->
-  <section class="specs">
-    <div class="container">
-      <div class="section-header">
-        <h2>Built for <span class="gradient-text">Performance</span></h2>
-      </div>
-
-      <div class="specs-grid">
-        <div class="spec-item">
-          <div class="spec-value gradient-text">50+</div>
-          <div class="spec-label">Languages Supported</div>
-        </div>
-        <div class="spec-item">
-          <div class="spec-value gradient-text">11+</div>
-          <div class="spec-label">AI Providers</div>
-        </div>
-        <div class="spec-item">
-          <div class="spec-value gradient-text">3</div>
-          <div class="spec-label">Edit Operations</div>
-        </div>
-        <div class="spec-item">
-          <div class="spec-value gradient-text">1</div>
-          <div class="spec-label">API Key Needed</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- CTA Section -->
-  <section class="cta-section">
-    <h2>Start Building <span class="gradient-text">Smarter</span></h2>
-    <p>Download Keystone and experience AI-powered development</p>
-    <div class="cta-group">
-      <a href="#" class="btn btn-primary">
-        Download Now
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-        </svg>
-      </a>
-    </div>
-  </section>
-
-  <!-- Footer -->
-  <footer>
-    <p>Keystone by <a href="https://aiassist.net">AiAssist Secure</a></p>
   </footer>
 
+  <script src="script.js"></script>
+  <script>
+    // Small inline helper (keeps script.js focused on UX behavior)
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
 </body>
+
 </html>
