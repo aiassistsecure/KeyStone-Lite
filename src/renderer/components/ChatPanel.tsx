@@ -63,7 +63,13 @@ const THINKING_PHRASES = [
   { text: "Coding", emoji: "✨" },
 ];
 
-function ThinkingAnimation({ activeFile, activeTool }: { activeFile?: string; activeTool?: string }) {
+interface ThinkingAnimationProps {
+  activeFile?: string;
+  activeTool?: string;
+  activeOperation?: string;
+}
+
+function ThinkingAnimation({ activeFile, activeTool, activeOperation }: ThinkingAnimationProps) {
   const [phraseIndex, setPhraseIndex] = useState(0);
   
   useEffect(() => {
@@ -76,14 +82,17 @@ function ThinkingAnimation({ activeFile, activeTool }: { activeFile?: string; ac
   const phrase = THINKING_PHRASES[phraseIndex];
   const displayFile = activeFile ? activeFile.split(/[/\\]/).pop() : null;
   
-  const getToolLabel = () => {
+  const getActivityLabel = () => {
+    if (activeOperation === 'insert') return 'Inserting code in';
+    if (activeOperation === 'replace') return 'Replacing code in';
+    if (activeOperation === 'delete') return 'Deleting code in';
     if (activeTool === 'read_file') return 'Reading';
     if (activeTool === 'search_files') return 'Searching';
     if (activeTool === 'list_files') return 'Browsing';
     return null;
   };
   
-  const toolLabel = getToolLabel();
+  const activityLabel = getActivityLabel();
   
   return (
     <motion.div
@@ -145,14 +154,14 @@ function ThinkingAnimation({ activeFile, activeTool }: { activeFile?: string; ac
           {displayFile && (
             <AnimatePresence mode="wait">
               <motion.div
-                key={displayFile}
+                key={`${activityLabel}-${displayFile}`}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 10 }}
                 className="flex items-center gap-2 text-xs text-gray-500"
               >
                 <FileCode className="w-3 h-3" />
-                <span>{toolLabel && `${toolLabel}: `}<span className="text-cyan-400/70 font-mono">{displayFile}</span></span>
+                <span>{activityLabel && `${activityLabel} `}<span className="text-cyan-400/70 font-mono">{displayFile}</span></span>
               </motion.div>
             </AnimatePresence>
           )}
@@ -371,6 +380,7 @@ export function ChatPanel({
   const [appliedMessageIds, setAppliedMessageIds] = useState<Set<string>>(new Set());
   const [streamingFile, setStreamingFile] = useState<string | undefined>();
   const [streamingTool, setStreamingTool] = useState<string | undefined>();
+  const [streamingOperation, setStreamingOperation] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -567,9 +577,10 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 )
               );
             },
-            onToolActivity: (toolName, filePath) => {
+            onToolActivity: (toolName, filePath, operation) => {
               setStreamingTool(toolName);
               if (filePath) setStreamingFile(filePath);
+              if (operation) setStreamingOperation(operation);
             },
           });
           
@@ -650,6 +661,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         setIsLoading(false);
         setStreamingFile(undefined);
         setStreamingTool(undefined);
+        setStreamingOperation(undefined);
         return;
       }
       
@@ -739,6 +751,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
       setIsLoading(false);
       setStreamingFile(undefined);
       setStreamingTool(undefined);
+      setStreamingOperation(undefined);
     }
   };
 

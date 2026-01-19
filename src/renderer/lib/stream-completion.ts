@@ -8,7 +8,7 @@ interface StreamCompletionOptions {
   maxTokens?: number;
   provider?: string;
   onProgress?: (text: string) => void;
-  onToolActivity?: (toolName: string, filePath?: string) => void;
+  onToolActivity?: (toolName: string, filePath?: string, operation?: string) => void;
 }
 
 interface ToolCall {
@@ -141,8 +141,9 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
               try {
                 const args = JSON.parse(existing.function.arguments);
                 const filePath = args.file_path || args.filePath || args.path;
+                const operation = args.operation || args.action || args.type;
                 if (filePath) {
-                  onToolActivity?.(existing.function.name, filePath);
+                  onToolActivity?.(existing.function.name, filePath, operation);
                 }
               } catch {
                 // Arguments not complete yet, will parse when done
