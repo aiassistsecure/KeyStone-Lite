@@ -476,6 +476,8 @@ section:nth-of-type(even) {
   width: min(320px, 70vw);
   height: auto;
   margin: 0 auto 14px;
+  /* was inline margin-top:-18%; (breaks across viewports) */
+  margin-top: clamp(-28px, -2.2vw, -8px);
 }
 
 .hero h1 {
@@ -587,6 +589,12 @@ section:nth-of-type(even) {
 }
 
 @media (max-width: 768px) {
+/* On mobile, avoid negative offsets pushing the logo into the topbar */
+@media (max-width: 768px) {
+  .hero-logo {
+    margin-top: 0;
+  }
+}
   .hero-microproof {
     grid-template-columns: 1fr
   }
