@@ -86,6 +86,9 @@ function ThinkingAnimation({ activeFile, activeTool, activeOperation }: Thinking
     if (activeOperation === 'insert') return 'Inserting code in';
     if (activeOperation === 'replace') return 'Replacing code in';
     if (activeOperation === 'delete') return 'Deleting code in';
+    if (activeOperation === 'edit') return 'Editing';
+    if (activeOperation === 'create') return 'Creating';
+    if (activeTool === 'surgical_edit') return 'Writing code in';
     if (activeTool === 'read_file') return 'Reading';
     if (activeTool === 'search_files') return 'Searching';
     if (activeTool === 'list_files') return 'Browsing';
@@ -570,13 +573,6 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
             temperature,
             maxTokens,
             provider: provider || undefined,
-            onProgress: (text) => {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMessageId ? { ...m, content: text } : m
-                )
-              );
-            },
             onToolActivity: (toolName, filePath, operation) => {
               setStreamingTool(toolName);
               if (filePath) setStreamingFile(filePath);
@@ -1129,7 +1125,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         )}
 
         <AnimatePresence>
-          {messages.map((message) => (
+          {messages.filter(m => !(isLoading && m.role === 'assistant' && !m.content)).map((message) => (
             <motion.div
               key={message.id}
               initial={{ opacity: 0, y: 10 }}
@@ -1186,8 +1182,8 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
           ))}
         </AnimatePresence>
 
-        {isLoading && messages[messages.length - 1]?.role === 'assistant' && messages[messages.length - 1]?.content === '' && (
-          <ThinkingAnimation activeFile={streamingFile} activeTool={streamingTool} />
+        {isLoading && (
+          <ThinkingAnimation activeFile={streamingFile} activeTool={streamingTool} activeOperation={streamingOperation} />
         )}
 
         <div ref={messagesEndRef} />

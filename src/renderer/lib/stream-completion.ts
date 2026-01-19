@@ -117,6 +117,12 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
         if (delta?.content) {
           content += delta.content;
           onProgress?.(content);
+          
+          const editMatch = content.match(/<<<(EDIT|INSERT|REPLACE|DELETE|CREATE)\s+([^\s>]+)/i);
+          if (editMatch) {
+            const [, op, filePath] = editMatch;
+            onToolActivity?.('surgical_edit', filePath, op.toLowerCase());
+          }
         }
 
         if (delta?.tool_calls) {
