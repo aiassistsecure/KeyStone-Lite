@@ -30,6 +30,22 @@ export function parseSurgicalEdits(response: string): ParsedEditResponse {
     });
   }
 
+  // Handle top-level CREATE blocks: <<<CREATE path/to/file.md>>>...<<<END>>>
+  const createBlockRegex = /<<<CREATE\s+([^>]+)>>>([\s\S]*?)<<<END>>>/g;
+  let createMatch;
+  
+  while ((createMatch = createBlockRegex.exec(response)) !== null) {
+    const [fullMatch, filepath, fileContent] = createMatch;
+    explanation = explanation.replace(fullMatch, '').trim();
+    
+    edits.push({
+      type: 'create',
+      file: filepath.trim(),
+      startLine: 1,
+      content: fileContent.trim(),
+    });
+  }
+
   const editBlockRegex = /<<<EDIT\s+([^>]+)>>>([\s\S]*?)<<<END>>>/g;
   let match;
 
