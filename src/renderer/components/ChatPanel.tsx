@@ -91,6 +91,7 @@ function ThinkingAnimation({ activeFile, activeTool, activeOperation }: Thinking
     if (activeTool === 'surgical_edit') return 'Writing code in';
     if (activeTool === 'read_file') return 'Reading';
     if (activeTool === 'search_files') return 'Searching';
+    if (activeTool === 'tavily_search') return 'Researching';
     if (activeTool === 'list_files') return 'Browsing';
     return null;
   };
@@ -344,8 +345,32 @@ const LLM_TOOLS = [
         required: ['pattern']
       }
     }
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'tavily_search',
+      description: 'Search the web for information, documentation, best practices, or API references. Use this for research when you need external context.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Search query (e.g., "React useEffect best practices", "Bitcoin RPC API documentation")'
+          },
+          search_depth: {
+            type: 'string',
+            enum: ['basic', 'advanced'],
+            description: 'Search depth: basic for quick results, advanced for comprehensive research'
+          }
+        },
+        required: ['query']
+      }
+    }
   }
 ];
+
+type EditorMode = 'debug' | 'focus' | 'keystone';
 
 interface ChatPanelProps {
   apiKey: string;
@@ -379,8 +404,9 @@ export function ChatPanel({
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [keystoneMode, setKeystoneMode] = useState(false);
+  const [mode, setMode] = useState<EditorMode>('debug');
   const [appliedMessageIds, setAppliedMessageIds] = useState<Set<string>>(new Set());
+  const appliedIdsRef = useRef<Set<string>>(new Set());
   const [streamingFile, setStreamingFile] = useState<string | undefined>();
   const [streamingTool, setStreamingTool] = useState<string | undefined>();
   const [streamingOperation, setStreamingOperation] = useState<string | undefined>();
@@ -402,16 +428,36 @@ export function ChatPanel({
   }, [pendingMessage]);
 
   useEffect(() => {
-    if (!keystoneMode || isLoading) return;
+    console.log('[AutoApply] Effect triggered - isLoading:', isLoading, 'mode:', mode);
+    if (isLoading) return;
+    if (mode !== 'keystone' && mode !== 'focus') return;
     
     const lastMessage = messages[messages.length - 1];
-    if (lastMessage?.role === 'assistant' && lastMessage.content) {
+    console.log('[AutoApply] Last message:', lastMessage?.role, 'hasContent:', !!lastMessage?.content, 'alreadyApplied:', appliedIdsRef.current.has(lastMessage?.id || ''));
+    
+    if (lastMessage?.role === 'assistant' && lastMessage.content && !appliedIdsRef.current.has(lastMessage.id)) {
       const { edits } = parseSurgicalEdits(lastMessage.content);
+      console.log('[AutoApply] Parsed edits:', edits.length, edits.map(e => `${e.type}:${e.file}`));
+      
       if (edits.length > 0) {
-        applySurgicalEdits(edits);
+        if (mode === 'focus') {
+          const mdEdits = edits.filter(e => e.file.endsWith('.md'));
+          console.log('[Focus] .md edits found:', mdEdits.length, mdEdits.map(e => e.file));
+          if (mdEdits.length > 0) {
+            console.log('[Focus] Auto-applying .md files:', mdEdits.map(e => e.file));
+            appliedIdsRef.current.add(lastMessage.id);
+            setAppliedMessageIds(prev => new Set(prev).add(lastMessage.id));
+            applySurgicalEdits(mdEdits);
+          }
+        } else {
+          console.log('[Keystone] Auto-applying all edits');
+          appliedIdsRef.current.add(lastMessage.id);
+          setAppliedMessageIds(prev => new Set(prev).add(lastMessage.id));
+          applySurgicalEdits(edits);
+        }
       }
     }
-  }, [isLoading, keystoneMode]);
+  }, [isLoading, mode, messages]);
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
@@ -523,7 +569,49 @@ The user has an "Apply All" button that applies your edits automatically.
 Always use line numbers from the context files shown below.
 ` : '';
 
-      const modeInstructions = keystoneMode ? keystoneModeInstructions : debugModeInstructions;
+      const focusModeInstructions = `
+YOU ARE IN FOCUS MODE - DOCUMENTATION & RESEARCH SPECIALIST.
+
+Your role is to UNDERSTAND, RESEARCH, and DOCUMENT - NOT to write or modify code.
+
+TOOLS AVAILABLE:
+- read_file(path): Read any file to understand the codebase
+- search_files(pattern): Search for patterns across the project
+- tavily_search(query): Search the web for documentation, best practices, API references
+
+WORKFLOW:
+1. EXPLORE: Use tools to understand the codebase structure and purpose
+2. RESEARCH: Use tavily_search for external context (APIs, libraries, best practices)
+3. ASK: If you need more context, ask the user specific clarifying questions
+4. SYNTHESIZE: Create comprehensive documentation in Markdown format
+
+CRITICAL OUTPUT RULES:
+- You may ONLY output <<<CREATE>>> blocks for .md files
+- NEVER output <<<EDIT>>> or <<<REPLACE>>> blocks for .ts, .js, .py, or any code files
+- NEVER suggest code changes - your job is ONLY documentation
+- Use proper Markdown formatting (headers, lists, code blocks for examples)
+- End with: "Ready to build? Switch to Keystone mode!"
+
+DOCUMENTATION TYPES:
+- Project specs and architecture (docs/spec.md, docs/architecture.md)
+- Implementation plans and task breakdowns (docs/plan.md)
+- API documentation (docs/api.md)
+- README files (README.md)
+- Technical decision documents (docs/decisions.md)
+
+TO CREATE A NEW DOCUMENT:
+<<<CREATE docs/filename.md>>>
+# Document Title
+
+Your markdown content here...
+<<<END>>>
+`;
+
+      const modeInstructions = mode === 'keystone' 
+        ? keystoneModeInstructions 
+        : mode === 'focus' 
+          ? focusModeInstructions 
+          : debugModeInstructions;
 
       const openFilesList = openFiles.length > 0 
         ? `\nOpen files: ${openFiles.map(f => f.name).join(', ')}`
@@ -545,11 +633,12 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         { role: 'user', content: input.trim() },
       ];
       
-      if (keystoneMode) {
+      if (mode === 'keystone' || mode === 'focus') {
         let toolLoopCount = 0;
         const maxToolLoops = 15;
         
-        console.log('[Keystone] Starting tool-enabled chat, tools:', LLM_TOOLS.map(t => t.function.name));
+        const modeLabel = mode === 'focus' ? 'Focus' : 'Keystone';
+        console.log(`[${modeLabel}] Starting tool-enabled chat, tools:`, LLM_TOOLS.map(t => t.function.name));
         
         while (toolLoopCount < maxToolLoops) {
           const forceFinish = toolLoopCount >= 12;
@@ -560,8 +649,12 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
           const startTime = Date.now();
           console.log('[Keystone] Starting streaming API call at:', new Date().toISOString());
           
+          const forceFinishMessage = mode === 'focus'
+            ? 'You have gathered enough context. Now PRODUCE your comprehensive documentation in Markdown format. Create .md files with your specs, analysis, and recommendations. End with "Ready to build? Switch to Keystone mode!"'
+            : 'You have gathered the file content. Now PRODUCE your response with the surgical edit format. Do not request more tools.';
+          
           const messagesForRequest = forceFinish 
-            ? [...conversationMessages, { role: 'system', content: 'You have gathered the file content. Now PRODUCE your response with the surgical edit format. Do not request more tools.' }]
+            ? [...conversationMessages, { role: 'system', content: forceFinishMessage }]
             : conversationMessages;
           
           const toolData = await streamToolCompletion({
@@ -609,10 +702,17 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
             const args = JSON.parse(toolCall.function.arguments || '{}');
             let result: string;
             
+            const getToolStatusMessage = () => {
+              if (fnName === 'read_file') return `🔍 Reading ${args.path}...`;
+              if (fnName === 'search_files') return `🔎 Searching for "${args.pattern}"...`;
+              if (fnName === 'tavily_search') return `🌐 Researching: ${args.query}...`;
+              return `⚙️ Running ${fnName}...`;
+            };
+            
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantMessageId 
-                  ? { ...m, content: `🔍 Reading ${fnName === 'read_file' ? args.path : `files matching "${args.pattern}"`}...` }
+                  ? { ...m, content: getToolStatusMessage() }
                   : m
               )
             );
@@ -638,6 +738,38 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                   searchResult.results.map(r => `${r.file}:\n${r.matches.join('\n')}`).join('\n\n');
               }
               console.log('[search_files] Returning:', result.slice(0, 300));
+            } else if (fnName === 'tavily_search') {
+              console.log('[tavily_search] Searching for:', args.query);
+              try {
+                const tavilyResponse = await fetch('https://api.aiassist.net/v1/search', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${apiKey}`,
+                  },
+                  body: JSON.stringify({
+                    query: args.query,
+                    search_depth: args.search_depth || 'basic',
+                  }),
+                });
+                if (!tavilyResponse.ok) {
+                  result = `Search error: ${tavilyResponse.status}`;
+                } else {
+                  const tavilyData = await tavilyResponse.json();
+                  const searchResults = tavilyData.results || [];
+                  if (searchResults.length === 0) {
+                    result = `No results found for: "${args.query}"`;
+                  } else {
+                    result = `Search results for "${args.query}":\n\n` +
+                      searchResults.slice(0, 5).map((r: { title: string; url: string; content: string }) => 
+                        `**${r.title}**\n${r.url}\n${r.content?.slice(0, 500) || ''}`
+                      ).join('\n\n---\n\n');
+                  }
+                }
+              } catch (e) {
+                result = `Search error: ${e instanceof Error ? e.message : 'Unknown error'}`;
+              }
+              console.log('[tavily_search] Returning:', result.slice(0, 300));
             } else {
               result = `Unknown tool: ${fnName}`;
             }
@@ -708,6 +840,23 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                   const parsed = JSON.parse(data);
                   const delta = parsed.choices?.[0]?.delta?.content || '';
                   accumulatedContent += delta;
+
+                  // Detect surgical edit operations from streaming content
+                  const editMatch = accumulatedContent.match(/<<<(EDIT|INSERT|REPLACE|DELETE|CREATE)>>>\s*\n\s*([^\n]+)/);
+                  if (editMatch) {
+                    const op = editMatch[1].toLowerCase();
+                    const filePath = editMatch[2].replace(/^(file:|path:)\s*/i, '').trim();
+                    const opLabels: Record<string, string> = {
+                      'edit': 'Editing',
+                      'insert': 'Inserting code in',
+                      'replace': 'Replacing code in',
+                      'delete': 'Removing code from',
+                      'create': 'Creating',
+                    };
+                    setStreamingOperation(opLabels[op] || 'Processing');
+                    if (filePath) setStreamingFile(filePath);
+                    setStreamingTool('surgical_edit');
+                  }
 
                   setMessages((prev) =>
                     prev.map((m) =>
@@ -806,6 +955,13 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
             ? filename
             : `${projectPath}${separator}${filename.replace(/\//g, separator)}`;
           
+          // Ensure parent directory exists
+          const dirPath = filePath.substring(0, filePath.lastIndexOf(separator));
+          if (dirPath && dirPath !== projectPath) {
+            console.log('[Apply] Creating directory:', dirPath);
+            await window.electron.fs.createDir(dirPath);
+          }
+          
           const newContent = fileEdits[0].content || '';
           console.log('[Apply] Creating new file:', filePath, 'Content length:', newContent.length);
           const writeResult = await window.electron.fs.writeFile(filePath, newContent);
@@ -884,18 +1040,18 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
       <>
         {edits.length > 0 && (
           <div className={`my-2 p-3 rounded-lg border ${
-            keystoneMode || isApplied
+            mode === 'keystone' || isApplied
               ? 'bg-green-500/10 border-green-500/30' 
               : 'bg-amber-500/10 border-amber-500/30'
           }`}>
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <FileEdit className={`w-4 h-4 ${keystoneMode || isApplied ? 'text-green-400' : 'text-amber-400'}`} />
-                <span className={`text-sm font-medium ${keystoneMode || isApplied ? 'text-green-400' : 'text-amber-400'}`}>
-                  {keystoneMode || isApplied ? 'Applied' : 'Surgical Edits'} ({edits.length})
+                <FileEdit className={`w-4 h-4 ${mode === 'keystone' || isApplied ? 'text-green-400' : 'text-amber-400'}`} />
+                <span className={`text-sm font-medium ${mode === 'keystone' || isApplied ? 'text-green-400' : 'text-amber-400'}`}>
+                  {mode === 'keystone' || isApplied ? 'Applied' : 'Surgical Edits'} ({edits.length})
                 </span>
               </div>
-              {!keystoneMode && !isApplied && (
+              {mode !== 'keystone' && !isApplied && (
                 <button
                   onClick={async () => {
                     console.log('[Apply All] Button clicked, edits:', edits);
@@ -1022,46 +1178,41 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className={`text-xs font-medium ${keystoneMode ? 'text-gray-500' : 'text-cyan-400'}`}>Debug</span>
-              <button
-                onClick={() => setKeystoneMode(!keystoneMode)}
-                className={`relative w-10 h-5 rounded-full transition-all duration-300 ${
-                  keystoneMode 
-                    ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 shadow-lg shadow-amber-500/30' 
-                    : 'bg-gray-600'
-                }`}
-                title={keystoneMode ? 'Keystone Mode: Auto-applies edits' : 'Debug Mode: Review before applying'}
-              >
-                <motion.div
-                  className={`absolute top-0.5 w-4 h-4 rounded-full shadow-md ${
-                    keystoneMode ? 'bg-white' : 'bg-white'
+              <div className="flex bg-gray-800/80 rounded-lg p-0.5 border border-white/10">
+                <button
+                  onClick={() => setMode('debug')}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                    mode === 'debug'
+                      ? 'bg-cyan-500/20 text-cyan-400 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-300'
                   }`}
-                  animate={{ left: keystoneMode ? '22px' : '2px' }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                />
-              </button>
-              <div className="flex items-center gap-1">
-                {keystoneMode && (
-                  <motion.div
-                    initial={{ scale: 0, rotate: -180 }}
-                    animate={{ scale: 1, rotate: 0 }}
-                    className="relative"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <motion.div
-                      className="absolute inset-0"
-                      animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.2, 1] }}
-                      transition={{ duration: 1.5, repeat: Infinity }}
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-orange-400" />
-                    </motion.div>
-                  </motion.div>
-                )}
-                <span className={`text-xs font-medium ${
-                  keystoneMode 
-                    ? 'bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400 bg-clip-text text-transparent' 
-                    : 'text-gray-500'
-                }`}>Keystone</span>
+                  title="Debug Mode: Review surgical edits before applying"
+                >
+                  Debug
+                </button>
+                <button
+                  onClick={() => setMode('focus')}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                    mode === 'focus'
+                      ? 'bg-purple-500/20 text-purple-400 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                  title="Focus Mode: Research & documentation only"
+                >
+                  Focus
+                </button>
+                <button
+                  onClick={() => setMode('keystone')}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1 ${
+                    mode === 'keystone'
+                      ? 'bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 text-amber-400 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-300'
+                  }`}
+                  title="Keystone Mode: Agentic coding with auto-apply"
+                >
+                  {mode === 'keystone' && <Sparkles className="w-3 h-3" />}
+                  Keystone
+                </button>
               </div>
             </div>
             {messages.length > 0 && (
