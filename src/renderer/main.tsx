@@ -1,6 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles/globals.css';
+import { installBrowserBridgeIfNeeded } from './lib/browser-bridge';
+
+installBrowserBridgeIfNeeded();
 
 import * as monaco from 'monaco-editor';
 import { loader } from '@monaco-editor/react';

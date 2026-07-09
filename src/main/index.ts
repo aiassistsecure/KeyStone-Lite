@@ -1,7 +1,27 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { spawn } from 'child_process';
 import Store from 'electron-store';
+
+// Optional native deps — loaded lazily, everything degrades gracefully.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let ptyModule: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  ptyModule = require('node-pty');
+} catch {
+  ptyModule = null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let NedbCoreCtor: any = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  NedbCoreCtor = require('nedb-engine').NedbCore;
+} catch (e) {
+  console.error('[Memory] nedb-engine not available:', (e as Error).message);
+}
 
 const store = new Store({
   defaults: {
@@ -304,4 +324,227 @@ ipcMain.handle('dialog:selectFolder', async (_, title: string) => {
     properties: ['openDirectory', 'createDirectory'],
   });
   return result.canceled ? null : result.filePaths[0];
+});
+
+// ---------------------------------------------------------------------------
+// Terminal IPC — spawn-per-command. node-pty when available, child_process
+// fallback otherwise. Output is batched (~50ms) before sending to renderer.
+// ---------------------------------------------------------------------------
+interface RunningProc {
+  kill: () => void;
+}
+const runningProcs = new Map<string, RunningProc>();
+
+function termEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, CI: '1', FORCE_COLOR: '0', TERM: 'xterm-256color' };
+}
+
+function resolveCwd(cwd?: string): string {
+  if (cwd && fs.existsSync(cwd)) return cwd;
+  if (currentProjectPath && fs.existsSync(currentProjectPath)) return currentProjectPath;
+  return app.getPath('home');
+}
+
+ipcMain.handle('terminal:exec', (event, id: string, command: string, cwd?: string) => {
+  if (runningProcs.has(id)) return { error: 'Execution id already in use' };
+  const wc = event.sender;
+  const workDir = resolveCwd(cwd);
+
+  let buf = '';
+  let timer: NodeJS.Timeout | null = null;
+  const flush = () => {
+    timer = null;
+    if (buf && !wc.isDestroyed()) {
+      wc.send('terminal:data', id, buf);
+      buf = '';
+    }
+  };
+  const push = (chunk: string) => {
+    buf += chunk;
+    if (buf.length > 64_000) flush();
+    else if (!timer) timer = setTimeout(flush, 50);
+  };
+  const finish = (code: number | null) => {
+    if (timer) clearTimeout(timer);
+    flush();
+    runningProcs.delete(id);
+    if (!wc.isDestroyed()) wc.send('terminal:exit', id, code);
+  };
+
+  try {
+    if (ptyModule) {
+      const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash';
+      const args = process.platform === 'win32' ? ['-Command', command] : ['-lc', command];
+      const p = ptyModule.spawn(shell, args, {
+        name: 'xterm-256color',
+        cols: 120,
+        rows: 30,
+        cwd: workDir,
+        env: termEnv(),
+      });
+      p.onData((data: string) => push(data));
+      p.onExit(({ exitCode }: { exitCode: number }) => finish(exitCode));
+      runningProcs.set(id, { kill: () => p.kill() });
+    } else {
+      const child = spawn(command, {
+        shell: true,
+        cwd: workDir,
+        env: termEnv(),
+        windowsHide: true,
+      });
+      child.stdout?.on('data', (c: Buffer) => push(c.toString('utf8').replace(/\r?\n/g, '\r\n')));
+      child.stderr?.on('data', (c: Buffer) => push(c.toString('utf8').replace(/\r?\n/g, '\r\n')));
+      child.on('close', (code) => finish(code));
+      child.on('error', (err) => {
+        push(`\r\n${err.message}\r\n`);
+        finish(1);
+      });
+      runningProcs.set(id, { kill: () => child.kill('SIGTERM') });
+    }
+    return { started: true };
+  } catch (error) {
+    runningProcs.delete(id);
+    return { error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('terminal:kill', (_, id: string) => {
+  const proc = runningProcs.get(id);
+  if (proc) {
+    try {
+      proc.kill();
+    } catch {
+      // already dead
+    }
+  }
+  return true;
+});
+
+// ---------------------------------------------------------------------------
+// Memory IPC — NEDB ENGINE (content-addressed, versioned embedded DB).
+// Scope 'global' → userData/keystone-memory (workspace + session index).
+// Scope <workspacePath> → {workspace}/.keystone/memory (history travels
+// with the workspace folder).
+// ---------------------------------------------------------------------------
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const memDbs = new Map<string, any>();
+
+function memoryPathFor(scope: string): string {
+  if (scope === 'global') return path.join(app.getPath('userData'), 'keystone-memory');
+  return path.join(scope, '.keystone', 'memory');
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getMemoryDb(scope: string): any {
+  const existing = memDbs.get(scope);
+  if (existing) return existing;
+  if (!NedbCoreCtor) throw new Error('nedb-engine is not installed in this build');
+  if (scope !== 'global') {
+    if (!path.isAbsolute(scope) || !fs.existsSync(scope)) {
+      throw new Error(`Invalid memory scope: ${scope}`);
+    }
+  }
+  const dbPath = memoryPathFor(scope);
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  const db = NedbCoreCtor.open(dbPath);
+  memDbs.set(scope, db);
+  return db;
+}
+
+function safeIdent(value: string, label: string): string {
+  if (!/^[A-Za-z0-9_:.\-]+$/.test(value)) throw new Error(`Invalid ${label}: ${value}`);
+  return value;
+}
+
+ipcMain.handle('memory:put', (_, scope: string, coll: string, id: string, doc: unknown) => {
+  try {
+    const db = getMemoryDb(scope);
+    const stored = db.put(safeIdent(coll, 'collection'), safeIdent(id, 'id'), JSON.stringify(doc));
+    return { doc: JSON.parse(stored) };
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('memory:get', (_, scope: string, coll: string, id: string) => {
+  try {
+    const db = getMemoryDb(scope);
+    const raw = db.get(safeIdent(coll, 'collection'), safeIdent(id, 'id'));
+    return { doc: raw ? JSON.parse(raw) : null };
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('memory:delete', (_, scope: string, coll: string, id: string) => {
+  try {
+    getMemoryDb(scope).delete(safeIdent(coll, 'collection'), safeIdent(id, 'id'));
+    return { success: true };
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('memory:list', (_, scope: string, coll: string) => {
+  try {
+    const db = getMemoryDb(scope);
+    const rows: string[] = db.query(`FROM ${safeIdent(coll, 'collection')}`);
+    return { docs: rows.map((r) => JSON.parse(r)) };
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('memory:query', (_, scope: string, nql: string) => {
+  try {
+    const rows: string[] = getMemoryDb(scope).query(nql);
+    return { docs: rows.map((r) => JSON.parse(r)) };
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('memory:link', (_, scope: string, frm: string, rel: string, to: string) => {
+  try {
+    getMemoryDb(scope).link(frm, rel, to);
+    return { success: true };
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('memory:unlink', (_, scope: string, frm: string, rel: string, to: string) => {
+  try {
+    getMemoryDb(scope).unlink(frm, rel, to);
+    return { success: true };
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('memory:neighbors', (_, scope: string, frm: string, rel: string) => {
+  try {
+    return { ids: getMemoryDb(scope).neighbors(frm, rel) };
+  } catch (error) {
+    return { error: (error as Error).message };
+  }
+});
+
+ipcMain.handle('memory:available', () => Boolean(NedbCoreCtor));
+
+app.on('before-quit', () => {
+  for (const [scope, db] of memDbs) {
+    try {
+      db.flush();
+    } catch (e) {
+      console.error(`[Memory] flush failed for ${scope}:`, e);
+    }
+  }
+  for (const proc of runningProcs.values()) {
+    try {
+      proc.kill();
+    } catch {
+      // ignore
+    }
+  }
 });

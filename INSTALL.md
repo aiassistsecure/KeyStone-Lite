@@ -6,7 +6,7 @@
 - **npm** (comes with Node.js)
 - **AiAS API Key** - Required for AI features. Get one at [aiassist.net](https://aiassist.net)
 
-### Platform-Specific Requirements (for building from source, not for release binaries)
+### Platform-Specific Requirements
 
 **Windows:**
 - Windows 10 or later
@@ -29,7 +29,11 @@ Download the latest release for your platform:
 | Platform | File |
 |----------|------|
 | Windows | `Keystone-Lite-Setup-x.x.x.exe` |
-Other platforms: coming soon!
+| macOS (Intel) | `Keystone-Lite-x.x.x.dmg` |
+| macOS (Apple Silicon) | `Keystone-Lite-x.x.x-arm64.dmg` |
+| Linux (Debian/Ubuntu) | `keystone-lite_x.x.x_amd64.deb` |
+| Linux (Fedora/RHEL) | `keystone-lite-x.x.x.x86_64.rpm` |
+| Linux (AppImage) | `Keystone-Lite-x.x.x.AppImage` |
 
 ### Windows Installation
 1. Download the `.exe` installer
@@ -69,7 +73,7 @@ chmod +x Keystone-Lite-x.x.x.AppImage
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/aiassistsecure/keystone-lite.git
+git clone https://github.com/interchained/keystone-lite.git
 cd keystone-lite
 ```
 
@@ -142,6 +146,15 @@ Location varies by platform:
 - **macOS:** `~/Library/Application Support/keystone-lite/`
 - **Linux:** `~/.config/keystone-lite/`
 
+### Custom Endpoints
+
+For local LLMs (Ollama, vLLM, LMStudio):
+
+1. Open Settings (gear icon)
+2. Go to Custom Endpoints
+3. Add your endpoint URL (e.g., `http://localhost:11434/v1`)
+4. Select models from your local server
+
 ---
 
 ## Troubleshooting
@@ -200,5 +213,6 @@ Remove-Item -Recurse "$env:APPDATA\keystone-lite"
 
 ## Support
 
+- **Documentation:** See `docs/keystone-lite-spec.md`
 - **Issues:** GitHub Issues
-- **API Support:** dev@interchained.org
+- **API Support:** support@aiassist.net

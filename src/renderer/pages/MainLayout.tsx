@@ -10,6 +10,17 @@ import { EditorTabs } from '../components/EditorTabs';
 import { ChatPanel } from '../components/ChatPanel';
 import { TitleBar } from '../components/TitleBar';
 import { WelcomePanel } from '../components/WelcomePanel';
+import { TerminalPanel } from '../components/TerminalPanel';
+import { PreviewPanel } from '../components/PreviewPanel';
+import { MetricsPanel } from '../components/MetricsPanel';
+import { StatusBar } from '../components/StatusBar';
+import { startDemo, stopDemo } from '../lib/demo-adapter';
+import { subscribe } from '../lib/agent-events';
+import { TerminalSquare, Eye, Activity } from 'lucide-react';
+import type { SessionInfo, WorkspaceInfo } from '../types/electron';
+
+type DockTab = 'terminal' | 'metrics';
+type CenterView = 'code' | 'preview';
 
 export interface OpenFile {
   path: string;
@@ -21,14 +32,45 @@ export interface OpenFile {
 
 interface MainLayoutProps {
   apiKey: string;
+  mode?: 'demo' | 'api';
+  session?: SessionInfo | null;
+  workspace?: WorkspaceInfo | null;
+  onExit?: () => void;
 }
 
-export function MainLayout({ apiKey }: MainLayoutProps) {
-  const [projectPath, setProjectPath] = useState<string | null>(null);
+export function MainLayout({ apiKey, mode = 'api', session = null, workspace = null, onExit }: MainLayoutProps) {
+  const [projectPath, setProjectPath] = useState<string | null>(workspace?.path || null);
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [chatContext, setChatContext] = useState<string[]>([]);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [dockTab, setDockTab] = useState<DockTab>('terminal');
+  const [centerView, setCenterView] = useState<CenterView>('code');
+
+  useEffect(() => {
+    if (workspace?.path) {
+      setProjectPath(workspace.path);
+      window.electron.project.setPath(workspace.path);
+    }
+  }, [workspace?.path]);
+
+  useEffect(() => {
+    if (mode !== 'demo') return;
+    const stop = startDemo();
+    return () => {
+      stop();
+      stopDemo();
+    };
+  }, [mode]);
+
+  useEffect(() => {
+    // Agent activity pulls the relevant surface forward.
+    const unsub = subscribe((e) => {
+      if (e.type === 'approval_request') setDockTab('terminal');
+      if (e.type === 'preview_refresh') setCenterView('preview');
+    });
+    return unsub;
+  }, []);
 
   const openFile = async (filePath: string) => {
     const existing = openFiles.find((f) => f.path === filePath);
@@ -130,52 +172,117 @@ export function MainLayout({ apiKey }: MainLayoutProps) {
           <PanelResizeHandle className="w-1 bg-white/5 hover:bg-cyan-500/50 transition-colors" />
 
           <Panel defaultSize={50} minSize={30}>
-            {openFiles.length > 0 ? (
-              <EditorTabs
-                files={openFiles}
-                activeFile={activeFile}
-                onSelectFile={setActiveFile}
-                onCloseFile={closeFile}
-                onUpdateContent={updateFileContent}
-                onSaveFile={saveFile}
-                onAddToContext={addToContext}
-                onAskAboutSelection={(message) => {
-                  setPendingMessage(message);
-                }}
-                contextFiles={chatContext}
-              />
-            ) : (
-              <WelcomePanel 
-                onOpenFolder={openFolder}
-                onNewFile={async (filePath) => {
-                  const content = await window.electron.fs.readFile(filePath);
-                  if (!content.error) {
-                    const name = filePath.split(/[\\/]/).pop() || 'untitled';
-                    const ext = name.split('.').pop()?.toLowerCase() || '';
-                    const langMap: Record<string, string> = {
-                      ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
-                      py: 'python', rs: 'rust', go: 'go', json: 'json', html: 'html', css: 'css',
-                    };
-                    setOpenFiles([{
-                      path: filePath,
-                      name,
-                      content: content.content || '',
-                      language: langMap[ext] || 'plaintext',
-                      isDirty: false,
-                    }]);
-                    setActiveFile(filePath);
-                  }
-                }}
-                onTemplateCreated={async (path) => {
-                  await window.electron.project.setPath(path);
-                  await window.electron.store.set('projectPath', path);
-                  setProjectPath(path);
-                  setOpenFiles([]);
-                  setActiveFile(null);
-                  setChatContext([]);
-                }}
-              />
-            )}
+            <PanelGroup direction="vertical" className="h-full">
+              <Panel defaultSize={65} minSize={25}>
+                <div className="h-full flex flex-col">
+                  <div className="flex items-center border-b border-white/10 bg-black/40 flex-shrink-0">
+                    {(
+                      [
+                        { id: 'code' as CenterView, label: 'Code', icon: TerminalSquare },
+                        { id: 'preview' as CenterView, label: 'Preview', icon: Eye },
+                      ]
+                    ).map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => setCenterView(t.id)}
+                        className={`flex items-center gap-1.5 px-4 py-1.5 text-xs border-b-2 transition-colors ${
+                          centerView === t.id
+                            ? 'border-cyan-400 text-cyan-300 bg-white/5'
+                            : 'border-transparent text-gray-500 hover:text-gray-300'
+                        }`}
+                        data-testid={`tab-center-${t.id}`}
+                      >
+                        <t.icon className="w-3.5 h-3.5" />
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex-1 min-h-0">
+                    {centerView === 'preview' ? (
+                      <PreviewPanel projectPath={projectPath} />
+                    ) : openFiles.length > 0 ? (
+                  <EditorTabs
+                    files={openFiles}
+                    activeFile={activeFile}
+                    onSelectFile={setActiveFile}
+                    onCloseFile={closeFile}
+                    onUpdateContent={updateFileContent}
+                    onSaveFile={saveFile}
+                    onAddToContext={addToContext}
+                    onAskAboutSelection={(message) => {
+                      setPendingMessage(message);
+                    }}
+                    contextFiles={chatContext}
+                  />
+                ) : (
+                  <WelcomePanel 
+                    onOpenFolder={openFolder}
+                    onNewFile={async (filePath) => {
+                      const content = await window.electron.fs.readFile(filePath);
+                      if (!content.error) {
+                        const name = filePath.split(/[\\/]/).pop() || 'untitled';
+                        const ext = name.split('.').pop()?.toLowerCase() || '';
+                        const langMap: Record<string, string> = {
+                          ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+                          py: 'python', rs: 'rust', go: 'go', json: 'json', html: 'html', css: 'css',
+                        };
+                        setOpenFiles([{
+                          path: filePath,
+                          name,
+                          content: content.content || '',
+                          language: langMap[ext] || 'plaintext',
+                          isDirty: false,
+                        }]);
+                        setActiveFile(filePath);
+                      }
+                    }}
+                    onTemplateCreated={async (path) => {
+                      await window.electron.project.setPath(path);
+                      await window.electron.store.set('projectPath', path);
+                      setProjectPath(path);
+                      setOpenFiles([]);
+                      setActiveFile(null);
+                      setChatContext([]);
+                    }}
+                  />
+                )}
+                  </div>
+                </div>
+              </Panel>
+
+              <PanelResizeHandle className="h-1 bg-white/5 hover:bg-cyan-500/50 transition-colors" />
+
+              <Panel defaultSize={35} minSize={15}>
+                <div className="h-full flex flex-col bg-[#07070c]">
+                  <div className="flex items-center border-b border-white/10 bg-black/40 flex-shrink-0">
+                    {(
+                      [
+                        { id: 'terminal' as DockTab, label: 'Terminal', icon: TerminalSquare },
+                        { id: 'metrics' as DockTab, label: 'Metrics', icon: Activity },
+                      ]
+                    ).map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => setDockTab(t.id)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs border-b-2 transition-colors ${
+                          dockTab === t.id
+                            ? 'border-cyan-400 text-cyan-300 bg-white/5'
+                            : 'border-transparent text-gray-500 hover:text-gray-300'
+                        }`}
+                        data-testid={`tab-dock-${t.id}`}
+                      >
+                        <t.icon className="w-3.5 h-3.5" />
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex-1 min-h-0">
+                    {dockTab === 'terminal' && <TerminalPanel cwd={projectPath || '/'} />}
+                    {dockTab === 'metrics' && <MetricsPanel />}
+                  </div>
+                </div>
+              </Panel>
+            </PanelGroup>
           </Panel>
 
           <PanelResizeHandle className="w-1 bg-white/5 hover:bg-cyan-500/50 transition-colors" />
@@ -183,6 +290,8 @@ export function MainLayout({ apiKey }: MainLayoutProps) {
           <Panel defaultSize={30} minSize={20} maxSize={50}>
             <ChatPanel
               apiKey={apiKey}
+              mode={mode}
+              session={session}
               contextFiles={chatContext}
               openFiles={openFiles}
               activeFile={activeFile}
@@ -197,6 +306,8 @@ export function MainLayout({ apiKey }: MainLayoutProps) {
           </Panel>
         </PanelGroup>
       </div>
+
+      <StatusBar mode={mode} session={session} workspace={workspace} onExit={onExit} />
     </motion.div>
   );
 }

@@ -1,0 +1,437 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<head lang="en">
+        <meta http-equiv="content-type" content="text/html;charset=utf-8">
+        <title>Keystone-Lite Documentation</title>
+        <!-- Framework CSS -->
+        <link rel="stylesheet" href="assets/blueprint-css/screen.css" type="text/css" media="screen, projection">
+        <link rel="stylesheet" href="assets/blueprint-css/print.css" type="text/css" media="print">
+        <!--[if lt IE 8]><link rel="stylesheet" href="assets/blueprint-css/ie.css" type="text/css" media="screen, projection"><![endif]-->
+        <link rel="stylesheet" href="assets/blueprint-css/plugins/fancy-type/screen.css" type="text/css" media="screen, projection">
+        <link rel="icon" href="assets/images/icon.ico">
+        <style type="text/css" media="screen">
+                p, table, hr, .box { margin-bottom:25px; }
+                .box p { margin-bottom:10px; }
+                code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+                pre { background: #1a1a2e; color: #e0e0e0; padding: 15px; border-radius: 5px; overflow-x: auto; }
+                pre code { background: none; padding: 0; }
+                .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 20px 0; }
+                .feature-card { background: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 4px solid #6366f1; }
+                .feature-card h4 { margin: 0 0 10px 0; color: #1a1a2e; }
+                .feature-card p { margin: 0; color: #666; font-size: 14px; }
+                .provider-list { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 15px 0; }
+                .provider-item { background: #e8e8ff; padding: 10px; border-radius: 5px; text-align: center; font-size: 13px; }
+                .mode-section { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; margin: 20px 0; }
+                .mode-section h4 { color: white; margin-top: 0; }
+                .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 15px 0; }
+                .info { background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 15px; margin: 15px 0; }
+        </style>
+</head>
+
+<body>
+        <div class="container">
+                <h3 class="center alt">
+                <img src="assets/images/icon.png" />
+                        <br>&ldquo;KeyStone-Lite&rdquo; by AiAssist Secure: Documentation v1.0</h3>
+                
+                <hr>
+                
+                <h1 class="center">KeyStone-Lite</h1>
+                <p class="center">AI-Powered Code Debugging & Editing Desktop Application</p>
+                
+                <div class="borderTop">
+                        <div class="span-6 colborder info prepend-1">
+                                <p class="prepend-top">
+                                        <strong>
+                                        Version: 1.0.0<br>
+                                        Platform: Windows, macOS, Linux<br>
+                                        License: Open Source (BUSL)<br>
+                                        GitHub: <a href="https://AiAssistSecure.github.io//KeyStone-Lite">AiAssistSecure/KeyStone-Lite</a>
+                                        </strong>
+                                </p>
+                        </div>
+                
+                        <div class="span-12 last">
+                                <p class="prepend-top append-0">KeyStone-Lite is a free, open-source desktop application for AI-powered code debugging and editing. Built with Electron, it supports 11+ LLM providers and features surgical code editing, file context awareness, and three operational modes. This is a freemium lead-gen tool for the full <a href="https://aiassist.net">AiAssist Secure</a> platform.</p>
+                        </div>
+                </div>
+                
+                <hr>
+                
+                <div class="mode-section" style="background: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%);">
+                        <h2 style="color: white; margin-top: 0;">Quick Start Guide (5 Minutes)</h2>
+                        <p>Get up and running with KeyStone-Lite in just 5 steps:</p>
+                        <ol style="margin-bottom: 0;">
+                                <li><strong>Install</strong> - Run the installer. No complex setup required.</li>
+                                <li><strong>Add AiAS API Key</strong> - Open Settings (gear icon) and paste your AiAssist Secure API key (<a href="https://aiassist.net" style="color: #fff; text-decoration: underline;">AiAssist Secure</a>)</li>
+                                <li><strong>Open Project</strong> - Click "Open Folder" and select your code project</li>
+                                <li><strong>Start Chatting</strong> - Ask the AI to fix bugs, explain code, or build features!</li>
+                        </ol>
+                </div>
+                
+                <div class="info">
+                        <strong>Don't have an AI API key?</strong> Get one free from <a href="https://console.groq.com">Groq</a> (fastest), <a href="https://platform.openai.com">OpenAI (tested >=95% accurate)</a> or 11+ providers supported on AiAS: <a href="https://aiassist.net" style="color: #000; text-decoration: underline;">AiAssist Secure</a>!
+                </div>
+                
+                <hr>
+                
+                <h2 class="alt">Feature Highlights</h2>
+                <p>Here's what makes KeyStone-Lite powerful for your workflow:</p>
+                
+                <div class="feature-grid">
+                        <div class="feature-card">
+                                <h4>11+ AI Providers</h4>
+                                <p>OpenAI, Anthropic, Groq, Gemini, Mistral, and more. Bring your own API key - no vendor lock-in.</p>
+                        </div>
+                        <div class="feature-card">
+                                <h4>3 Work Modes</h4>
+                                <p>Keystone (edit code), Debug (analyze issues), Focus (research/docs). Switch instantly.</p>
+                        </div>
+                        <div class="feature-card">
+                                <h4>Surgical Editing</h4>
+                                <p>AI edits specific lines, not entire files. Your code structure stays intact.</p>
+                        </div>
+                        <div class="feature-card">
+                                <h4>File Context</h4>
+                                <p>AI sees your project structure. Reference files with @mentions for targeted help.</p>
+                        </div>
+                        <div class="feature-card">
+                                <h4>Works Offline</h4>
+                                <p>Use Ollama for completely local, private AI. No internet required.</p>
+                        </div>
+                        <div class="feature-card">
+                                <h4>Cross-Platform</h4>
+                                <p>Windows, macOS, and Linux. Same experience everywhere.</p>
+                        </div>
+                </div>
+                
+                <hr>
+                
+                <h2 id="toc" class="alt">Table of Contents</h2>
+                <ol class="alpha">
+                        <li><a href="#installation">Installation & Setup</a></li>
+                        <li><a href="#integrating">Integrating with Your Codebase</a></li>
+                        <li><a href="#modes">Operational Modes</a></li>
+                        <li><a href="#providers">LLM Providers</a></li>
+                        <li><a href="#surgical-editing">Surgical Code Editing</a></li>
+                        <li><a href="#file-context">File Context System</a></li>
+                        <li><a href="#configuration">Configuration</a></li>
+                        <li><a href="#api-integration">AiAS API Integration</a></li>
+                        <li><a href="#troubleshooting">Troubleshooting</a></li>
+                        <li><a href="#credits">Credits & License</a></li>
+                </ol>
+                
+                <hr>
+                
+                <h3 id="installation"><strong>A) Installation & Setup</strong> - <a href="#toc">top</a></h3>
+                
+                <h4>System Requirements</h4>
+                <ul>
+                        <li>Windows 10+, macOS 10.15+, or Linux (Ubuntu 18.04+)</li>
+                        <li>4GB RAM minimum (8GB recommended)</li>
+                        <li>100MB disk space (adjust space depending on your vibe coding needs!)</li>
+                        <li>Internet connection for LLM API calls</li>
+                </ul>
+                
+                <h4>First Launch</h4>
+                <ol>
+                        <li>Open KeyStone-Lite</li>
+                        <li>Enter your (server) API key for AiAssist Secure</li>
+                        <li>Select a project folder to work with</li>
+                        <li>Start chatting with your AI assistant!</li>
+                </ol>
+                
+                <hr>
+                
+                <h3 id="integrating"><strong>B) Integrating with Your Codebase</strong> - <a href="#toc">top</a></h3>
+                
+                <p>KeyStone-Lite works with <strong>any existing codebase</strong> - no setup or configuration files needed. Here's how to get the most out of it:</p>
+                
+                <h4>Step 1: Open Your Project</h4>
+                <p>Click <strong>Open Folder</strong> and select your project's root directory. Keystone will scan the folder structure automatically.</p>
+                
+                <h4>Step 2: Add Context Files</h4>
+                <p>For best results, add the key files the AI should know about:</p>
+                <ul>
+                        <li>The file you're working on</li>
+                        <li>Related files (imports, components, utilities)</li>
+                        <li>Configuration files (package.json, tsconfig.json, etc.)</li>
+                </ul>
+                <p>Use the <strong>+</strong> button in the sidebar, or type <code>@filename</code> in your message.</p>
+                
+                <h4>Step 3: Ask Questions or Request Changes</h4>
+                <p>Example prompts to get started:</p>
+                <ul>
+                        <li>"Explain what this codebase does"</li>
+                        <li>"Fix the bug in @UserAuth.tsx where login fails"</li>
+                        <li>"Add input validation to the signup form"</li>
+                        <li>"Refactor this function to be more readable"</li>
+                        <li>"Write tests for the payment module"</li>
+                </ul>
+                
+                <h4>Works with Any Tech Stack</h4>
+                <div class="provider-list">
+                        <div class="provider-item">JavaScript/TypeScript</div>
+                        <div class="provider-item">Python</div>
+                        <div class="provider-item">React/Vue/Angular</div>
+                        <div class="provider-item">Node.js</div>
+                        <div class="provider-item">Java/Kotlin</div>
+                        <div class="provider-item">C#/.NET</div>
+                        <div class="provider-item">Go/Rust</div>
+                        <div class="provider-item">PHP/Ruby</div>
+                </div>
+                
+                <div class="info">
+                        <strong>Pro Tip:</strong> Start with Debug Mode to analyze issues, then switch to Keystone Mode when you're ready to make changes.
+                </div>
+                
+                <hr>
+                
+                <h3 id="modes"><strong>C) Operational Modes</strong> - <a href="#toc">top</a></h3>
+                
+                <p>KeyStone-Lite offers three distinct operational modes, each designed for specific workflows:</p>
+                
+                <div class="mode-section">
+                        <h4>Keystone Mode (Default)</h4>
+                        <p>Full-power code editing mode. The AI can read, analyze, and modify any file in your project. Supports surgical editing operations (REPLACE, INSERT, DELETE) that preserve your code structure.</p>
+                        <p><strong>Best for:</strong> Bug fixes, refactoring, implementing features, code review</p>
+                </div>
+                
+                <div class="mode-section" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        <h4>Debug Mode</h4>
+                        <p>Issue analysis mode. The AI examines your code to identify bugs, trace errors, and explain what's going wrong. Helps you understand problems before fixing them.</p>
+                        <p><strong>Best for:</strong> Finding bugs, understanding errors, tracing issues, code analysis</p>
+                </div>
+                
+                <div class="mode-section" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">
+                        <h4>Focus Mode</h4>
+                        <p>Research and documentation mode. The AI can read your codebase and search the web (via Tavily), but can only create/edit Markdown (.md) files. Perfect for documentation, research, and planning.</p>
+                        <p><strong>Best for:</strong> Writing docs, research, architecture planning, learning</p>
+                </div>
+                
+                <p>Switch modes using the dropdown in the top navigation bar</p>
+                
+                <hr>
+                
+                <h3 id="providers"><strong>C) LLM Providers</strong> - <a href="#toc">top</a></h3>
+                
+                <p>KeyStone-Lite supports 11+ LLM providers out of the box. Bring Your Own Key (BYOK) - you maintain full control and pay only for what you use.</p>
+                
+                <div class="provider-list">
+                        <div class="provider-item">OpenAI</div>
+                        <div class="provider-item">Anthropic</div>
+                        <div class="provider-item">Google Gemini</div>
+                        <div class="provider-item">Groq</div>
+                        <div class="provider-item">Mistral</div>
+                        <div class="provider-item">Cohere</div>
+                        <div class="provider-item">Perplexity</div>
+                        <div class="provider-item">Together AI</div>
+                        <div class="provider-item">Fireworks</div>
+                        <div class="provider-item">OpenRouter</div>
+                        <div class="provider-item">Local (Ollama)</div>
+                        <div class="provider-item" style="background: #c8e6c9;">PIN Network</div>
+                </div>
+                
+                <h4>PIN Network</h4>
+                <p>The PIN (P2P Inference Network) is a decentralized marketplace for LLM inference. Connect to community-hosted models with credit-based billing. No API key needed - just credits.</p>
+                
+                <h4>Configuring Providers</h4>
+                <ol>
+                        <li>Open <strong>Settings - Providers</strong></li>
+                        <li>Select your provider from the dropdown</li>
+                        <li>Enter your API key</li>
+                        <li>Choose a default model</li>
+                        <li>Click <strong>Save</strong></li>
+                </ol>
+                
+                <div class="info">
+                        <strong>Tip:</strong> You can configure multiple providers and switch between them. KeyStone-Lite will remember your last-used provider and model.
+                </div>
+                
+                <hr>
+                
+                <h3 id="surgical-editing"><strong>D) Surgical Code Editing</strong> - <a href="#toc">top</a></h3>
+                
+                <p>Unlike traditional AI code editors that regenerate entire files, KeyStone-Lite uses <strong>surgical editing</strong> - precise, line-based operations that preserve your existing code structure.</p>
+                
+                <h4>Edit Operations</h4>
+                
+                <p><strong>REPLACE</strong> - Replace specific lines with new content:</p>
+<pre><code>&lt;&lt;&lt;EDIT path/to/file.ts&gt;&gt;&gt;
+[REPLACE lines 10-15]
+// New code here
+function updatedFunction() {
+  return true;
+}
+&lt;&lt;&lt;/EDIT&gt;&gt;&gt;</code></pre>
+                
+                <p><strong>INSERT</strong> - Insert new lines at a specific position:</p>
+<pre><code>&lt;&lt;&lt;EDIT path/to/file.ts&gt;&gt;&gt;
+[INSERT at line 25]
+// This will be inserted before line 25
+const newVariable = "hello";
+&lt;&lt;&lt;/EDIT&gt;&gt;&gt;</code></pre>
+                
+                <p><strong>DELETE</strong> - Remove specific lines:</p>
+<pre><code>&lt;&lt;&lt;EDIT path/to/file.ts&gt;&gt;&gt;
+[DELETE lines 50-55]
+&lt;&lt;&lt;/EDIT&gt;&gt;&gt;</code></pre>
+                
+                <p><strong>CREATE</strong> - Create a new file:</p>
+<pre><code>&lt;&lt;&lt;CREATE path/to/newfile.ts&gt;&gt;&gt;
+// File content here
+export const myModule = {};
+&lt;&lt;&lt;/CREATE&gt;&gt;&gt;</code></pre>
+                
+                <h4>Auto-Apply</h4>
+                <p>Enable <strong>Auto-Apply</strong> in settings to automatically apply edits as they stream in. Disable it to review each edit before applying.</p>
+                
+                <div class="warning">
+                        <strong>Warning:</strong> Surgical edits are based on line numbers. If you manually edit a file while Keystone is generating edits, line numbers may shift and cause incorrect placements.
+                </div>
+                
+                <hr>
+                
+                <h3 id="file-context"><strong>E) File Context System</strong> - <a href="#toc">top</a></h3>
+                
+                <p>KeyStone-Lite maintains awareness of your project structure and can include relevant files in the context sent to the LLM.</p>
+                
+                <h4>Adding Context</h4>
+                <ul>
+                        <li><strong>Manual:</strong> Click the <strong>+</strong> button to add specific files</li>
+                        <li><strong>Auto-detect:</strong> Keystone automatically includes files mentioned in your prompts</li>
+                        <li><strong>@-mentions:</strong> Type <code>@filename</code> to reference a specific file</li>
+                </ul>
+                
+                <h4>Context Panel</h4>
+                <p>The left sidebar shows all files currently in context. You can:</p>
+                <ul>
+                        <li>Remove files by clicking the <strong>X</strong></li>
+                        <li>View file contents by clicking the file name</li>
+                        <li>Clear all context with the <strong>Clear All</strong> button</li>
+                </ul>
+                
+                <h4>Token Management</h4>
+                <p>The context panel shows estimated token count. Stay within your model's context window for best results:</p>
+                <ul>
+                        <li>GPT-4 Turbo: 128K tokens</li>
+                        <li>Claude 3: 200K tokens</li>
+                        <li>Gemini 1.5: 1M tokens</li>
+                </ul>
+                
+                <hr>
+                
+                <h3 id="configuration"><strong>F) Configuration</strong> - <a href="#toc">top</a></h3>
+                
+                <h4>Settings Location</h4>
+                <p>Configuration is stored in:</p>
+                <ul>
+                        <li><strong>Windows:</strong> <code>%APPDATA%/keystone-lite/config.json</code></li>
+                        <li><strong>macOS:</strong> <code>~/Library/Application Support/keystone-lite/config.json</code></li>
+                        <li><strong>Linux:</strong> <code>~/.config/keystone-lite/config.json</code></li>
+                </ul>
+                
+                <h4>Available Settings</h4>
+                <table>
+                        <tr><th>Setting</th><th>Description</th><th>Default</th></tr>
+                        <tr><td>Theme</td><td>Light or Dark mode</td><td>System</td></tr>
+                        <tr><td>Auto-Apply</td><td>Automatically apply code edits</td><td>Off</td></tr>
+                        <tr><td>Temperature</td><td>LLM creativity (0-1)</td><td>0.7</td></tr>
+                        <tr><td>Max Tokens</td><td>Maximum response length</td><td>4096</td></tr>
+                        <tr><td>Stream</td><td>Stream responses in real-time</td><td>On</td></tr>
+                        <tr><td>Default Mode</td><td>Startup mode</td><td>Keystone</td></tr>
+                </table>
+                
+                <hr>
+                
+                <h3 id="api-integration"><strong>G) AiAS API Integration</strong> - <a href="#toc">top</a></h3>
+                
+                <p>KeyStone-Lite can connect to the full <a href="https://aiassist.net">AiAssist Secure</a> platform for enhanced features:</p>
+                
+                <ul>
+                        <li><strong>Workspace Sync:</strong> Sync your projects with AiAS workspaces</li>
+                        <li><strong>Shared Context:</strong> Access team knowledge bases</li>
+                        <li><strong>Usage Analytics:</strong> Track token usage across projects</li>
+                        <li><strong>PIN Credits:</strong> Use your AiAS PIN balance</li>
+                </ul>
+                
+                <h4>Connecting to AiAS</h4>
+                <ol>
+                        <li>Open <strong>Settings - AiAS Integration</strong></li>
+                        <li>Enter your AiAS API key (found in your dashboard)</li>
+                        <li>Click <strong>Connect</strong></li>
+                        <li>Select a workspace to link</li>
+                </ol>
+                
+                <div class="info">
+                        <strong>Note:</strong> AiAS integration is optional. KeyStone-Lite works fully offline with local providers like Ollama.
+                </div>
+                
+                <hr>
+                
+                <h3 id="troubleshooting"><strong>I) Troubleshooting</strong> - <a href="#toc">top</a></h3>
+                
+                <h4>API Key Not Working</h4>
+                <ul>
+                        <li>Verify the key is correct (no extra spaces)</li>
+                        <li>Check that your API key has sufficient credits/quota</li>
+                        <li>Ensure you've selected the correct provider</li>
+                </ul>
+                
+                <h4>Edits Not Applying</h4>
+                <ul>
+                        <li>Check that the file path exists in your project</li>
+                        <li>Ensure the line numbers referenced still match the current file</li>
+                        <li>Try enabling/disabling Auto-Apply</li>
+                </ul>
+                
+                <h4>Slow Responses</h4>
+                <ul>
+                        <li>Reduce context size by removing unused files</li>
+                        <li>Try a faster model (e.g., GPT-4o-mini, Claude Haiku)</li>
+                        <li>Check your internet connection</li>
+                </ul>
+                
+                <h4>Logs Location</h4>
+                <p>Debug logs are stored at:</p>
+                <ul>
+                        <li><strong>Windows:</strong> <code>%APPDATA%/keystone-lite/logs/</code></li>
+                        <li><strong>macOS:</strong> <code>~/Library/Logs/keystone-lite/</code></li>
+                        <li><strong>Linux:</strong> <code>~/.config/keystone-lite/logs/</code></li>
+                </ul>
+                
+                <hr>
+                
+                <h3 id="credits"><strong>J) Credits & License</strong> - <a href="#toc">top</a></h3>
+                
+                <p>KeyStone-Lite is open-source software released under the BUSL License.</p>
+                
+                <h4>Built With</h4>
+                <ul>
+                        <li><strong>Electron</strong> - Cross-platform desktop framework</li>
+                        <li><strong>React</strong> - UI library</li>
+                        <li><strong>TypeScript</strong> - Type-safe JavaScript</li>
+                        <li><strong>Tailwind CSS</strong> - Utility-first CSS</li>
+                        <li><strong>shadcn/ui</strong> - UI components</li>
+                </ul>
+                
+                <h4>Contributors</h4>
+                <p>Thank you to all contributors who have helped improve KeyStone-Lite!</p>
+                
+                <h4>Support</h4>
+                <ul>
+                        <li>GitHub Issues: <a href="https://github.com/AiAssistSecure/keystone-lite/issues">Report bugs</a></li>
+                        <li>Discussions: <a href="https://github.com/AiAssistSecure/keystone-lite/discussions">Ask questions</a></li>
+                        <li>AiAS Platform: <a href="https://aiassist.net">Full-featured AI orchestration</a></li>
+                </ul>
+                
+                <hr>
+                
+                <p>Thank you for using KeyStone-Lite! We hope it helps you build amazing software faster.</p>
+                
+                <p class="append-bottom alt large"><strong>The AiAssist Secure Team</strong></p>
+                <p><a href="#toc">Go To Table of Contents</a></p>
+                
+                <hr class="space">
+        </div>
+</body>
+</html>

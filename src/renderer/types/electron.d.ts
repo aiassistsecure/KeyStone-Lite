@@ -36,6 +36,50 @@ export interface TemplateCreateResult {
   error?: string;
 }
 
+export interface WorkspaceInfo {
+  id: string;
+  name: string;
+  path: string;
+  createdAt: number;
+}
+
+export interface SessionInfo {
+  id: string;
+  name: string;
+  workspaceId: string;
+  workspacePath?: string;
+  mode: 'demo' | 'api';
+  createdAt: number;
+  lastActiveAt: number;
+  summary?: string;
+  messageCount?: number;
+}
+
+export interface MemoryDocResult<T = unknown> {
+  doc?: T | null;
+  error?: string;
+}
+
+export interface MemoryListResult<T = unknown> {
+  docs?: T[];
+  error?: string;
+}
+
+export interface MemoryOpResult {
+  success?: boolean;
+  error?: string;
+}
+
+export interface MemoryNeighborsResult {
+  ids?: string[];
+  error?: string;
+}
+
+export interface TerminalExecResult {
+  started?: boolean;
+  error?: string;
+}
+
 export interface StoreSchema {
   apiKey: string;
   defaultProvider: string;
@@ -50,6 +94,9 @@ export interface StoreSchema {
   streamResponses: boolean;
   recentProjects: string[];
   projectPath: string;
+  workspaces: WorkspaceInfo[];
+  sessions: SessionInfo[];
+  activeSessionId: string;
 }
 
 declare global {
@@ -83,6 +130,23 @@ declare global {
       project: {
         setPath: (projectPath: string) => Promise<boolean>;
         getPath: () => Promise<string | null>;
+      };
+      terminal?: {
+        exec: (id: string, command: string, cwd?: string) => Promise<TerminalExecResult>;
+        kill: (id: string) => Promise<boolean>;
+        onData: (cb: (id: string, chunk: string) => void) => () => void;
+        onExit: (cb: (id: string, code: number | null) => void) => () => void;
+      };
+      memory?: {
+        available: () => Promise<boolean>;
+        put: (scope: string, coll: string, id: string, doc: unknown) => Promise<MemoryDocResult>;
+        get: (scope: string, coll: string, id: string) => Promise<MemoryDocResult>;
+        delete: (scope: string, coll: string, id: string) => Promise<MemoryOpResult>;
+        list: (scope: string, coll: string) => Promise<MemoryListResult>;
+        query: (scope: string, nql: string) => Promise<MemoryListResult>;
+        link: (scope: string, frm: string, rel: string, to: string) => Promise<MemoryOpResult>;
+        unlink: (scope: string, frm: string, rel: string, to: string) => Promise<MemoryOpResult>;
+        neighbors: (scope: string, frm: string, rel: string) => Promise<MemoryNeighborsResult>;
       };
     };
   }

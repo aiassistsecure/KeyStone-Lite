@@ -12,11 +12,18 @@ import {
   RotateCcw,
   FileEdit,
   Paperclip,
+  Play,
+  ShieldAlert,
+  TerminalSquare,
 } from 'lucide-react';
 import type { OpenFile } from '../pages/MainLayout';
 import { ModelSelector } from './ModelSelector';
 import { parseSurgicalEdits, applyMultipleEdits, type SurgicalEdit } from '../lib/surgical-edit';
 import { streamToolCompletion } from '../lib/stream-completion';
+import { subscribe as subscribeAgentEvents, publish as publishAgentEvent } from '../lib/agent-events';
+import { terminals } from '../lib/terminal-sessions';
+import { saveChatMessage, loadChatMessages, type ChatRecord } from '../lib/sessions';
+import type { SessionInfo } from '../types/electron';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -367,13 +374,75 @@ const LLM_TOOLS = [
         required: ['query']
       }
     }
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'run_command',
+      description: 'Run a shell command in a terminal tab. The user must approve every command before it runs (unless they turned on auto-approve for this session). Returns the captured output.',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: {
+            type: 'string',
+            description: 'The shell command to run (e.g., "ls -la", "npm test")'
+          },
+          terminal: {
+            type: 'string',
+            description: 'Optional terminal tab name to run in (default "main"). Use open_terminal to create named tabs.'
+          }
+        },
+        required: ['command']
+      }
+    }
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'open_terminal',
+      description: 'Open a new named terminal tab (e.g., one for the backend, one for the frontend). Returns the tab name.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description: 'Name for the terminal tab (e.g., "backend", "tests")'
+          }
+        },
+        required: ['name']
+      }
+    }
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'list_terminals',
+      description: 'List all open terminal tabs with their status and working directory.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
   }
 ];
+
+function waitForApproval(approvalId: string): Promise<'run' | 'deny'> {
+  return new Promise((resolve) => {
+    const unsub = subscribeAgentEvents((e) => {
+      if (e.type === 'approval_resolved' && e.approvalId === approvalId) {
+        unsub();
+        resolve(e.decision);
+      }
+    });
+  });
+}
 
 type EditorMode = 'debug' | 'focus' | 'keystone';
 
 interface ChatPanelProps {
   apiKey: string;
+  mode: 'demo' | 'api';
+  session: SessionInfo | null;
   contextFiles: string[];
   openFiles: OpenFile[];
   activeFile: string | null;
@@ -383,15 +452,27 @@ interface ChatPanelProps {
   onApplyEdit: (path: string, content: string) => void;
 }
 
+interface ApprovalInfo {
+  approvalId: string;
+  command: string;
+  terminal: string;
+  decision: 'pending' | 'run' | 'deny';
+  auto?: boolean;
+  source: 'demo' | 'real';
+}
+
 interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'approval';
   content: string;
   timestamp: Date;
+  approval?: ApprovalInfo;
 }
 
 export function ChatPanel({
   apiKey,
+  mode: appMode,
+  session,
   contextFiles,
   openFiles,
   activeFile,
@@ -412,6 +493,124 @@ export function ChatPanel({
   const [streamingOperation, setStreamingOperation] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [autoApprove, setAutoApprove] = useState(false);
+  const autoApproveRef = useRef(false);
+  const seqRef = useRef(0);
+
+  const persistMessage = (role: ChatRecord['role'], content: string, meta?: Record<string, unknown>) => {
+    if (!session) return;
+    const record: ChatRecord = { seq: seqRef.current++, role, content, ts: Date.now(), ...(meta ? { meta } : {}) };
+    void saveChatMessage(session, record).catch((e) => console.warn('[Chat] persist failed:', e));
+  };
+
+  useEffect(() => {
+    autoApproveRef.current = autoApprove;
+  }, [autoApprove]);
+
+  // Restore the persisted transcript when a session opens.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const records = await loadChatMessages(session);
+        if (cancelled || records.length === 0) {
+          if (!cancelled) seqRef.current = 0;
+          return;
+        }
+        seqRef.current = records[records.length - 1].seq + 1;
+        const restored: Message[] = records
+          .filter((r) => r.role === 'user' || r.role === 'assistant' || r.role === 'approval')
+          .map((r) => ({
+            id: `hist_${r.seq}`,
+            role: r.role as Message['role'],
+            content: r.content,
+            timestamp: new Date(r.ts),
+            ...(r.role === 'approval'
+              ? {
+                  approval: {
+                    approvalId: String(r.meta?.approvalId || ''),
+                    command: String(r.meta?.command || r.content),
+                    terminal: String(r.meta?.terminal || 'main'),
+                    decision: (r.meta?.decision === 'run' ? 'run' : 'deny') as ApprovalInfo['decision'],
+                    auto: Boolean(r.meta?.auto),
+                    source: (r.meta?.source === 'demo' ? 'demo' : 'real') as ApprovalInfo['source'],
+                  },
+                }
+              : {}),
+          }));
+        setMessages(restored);
+      } catch (e) {
+        console.warn('[Chat] transcript restore failed:', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.id]);
+
+  // Agent event bus: demo chat stream + command approval cards.
+  useEffect(() => {
+    const unsub = subscribeAgentEvents((e) => {
+      if (e.type === 'chat_delta') {
+        setMessages((prev) => {
+          const exists = prev.some((m) => m.id === e.msgId);
+          if (exists) {
+            return prev.map((m) => (m.id === e.msgId ? { ...m, content: m.content + e.delta } : m));
+          }
+          return [...prev, { id: e.msgId, role: 'assistant', content: e.delta, timestamp: new Date() }];
+        });
+      } else if (e.type === 'chat_done') {
+        setMessages((prev) => {
+          const msg = prev.find((m) => m.id === e.msgId);
+          if (msg && msg.content) persistMessage('assistant', msg.content);
+          return prev;
+        });
+      } else if (e.type === 'approval_request') {
+        const approval: ApprovalInfo = {
+          approvalId: e.approvalId,
+          command: e.command,
+          terminal: e.terminal,
+          decision: 'pending',
+          source: e.source,
+        };
+        if (autoApproveRef.current) {
+          approval.decision = 'run';
+          approval.auto = true;
+          setMessages((prev) => [
+            ...prev,
+            { id: `approval_${e.approvalId}`, role: 'approval', content: e.command, timestamp: new Date(), approval },
+          ]);
+          persistMessage('approval', e.command, { ...approval });
+          publishAgentEvent({ type: 'approval_resolved', approvalId: e.approvalId, decision: 'run', auto: true });
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            { id: `approval_${e.approvalId}`, role: 'approval', content: e.command, timestamp: new Date(), approval },
+          ]);
+        }
+      } else if (e.type === 'approval_resolved') {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.approval?.approvalId === e.approvalId && m.approval.decision === 'pending'
+              ? { ...m, approval: { ...m.approval, decision: e.decision, auto: e.auto } }
+              : m
+          )
+        );
+      }
+    });
+    return unsub;
+  }, [session?.id]);
+
+  const resolvedApprovalsRef = useRef<Set<string>>(new Set());
+
+  const resolveApproval = (message: Message, decision: 'run' | 'deny') => {
+    if (!message.approval || message.approval.decision !== 'pending') return;
+    if (resolvedApprovalsRef.current.has(message.approval.approvalId)) return;
+    resolvedApprovalsRef.current.add(message.approval.approvalId);
+    persistMessage('approval', message.approval.command, { ...message.approval, decision });
+    publishAgentEvent({ type: 'approval_resolved', approvalId: message.approval.approvalId, decision, auto: false });
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -461,6 +660,7 @@ export function ChatPanel({
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
+    if (appMode === 'demo') return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -470,6 +670,8 @@ export function ChatPanel({
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    persistMessage('user', userMessage.content);
+    publishAgentEvent({ type: 'status', status: 'working', detail: 'Assistant is thinking' });
     setInput('');
     setIsLoading(true);
 
@@ -583,13 +785,14 @@ WORKFLOW:
 1. EXPLORE: Use tools to understand the codebase structure and purpose
 2. RESEARCH: Use tavily_search for external context (APIs, libraries, best practices)
 3. ASK: If you need more context, ask the user specific clarifying questions
-4. SYNTHESIZE: Create comprehensive documentation in Markdown format
+4. SYNTHESIZE: Create or update documentation in Markdown format
 
 CRITICAL OUTPUT RULES:
-- You may ONLY output <<<CREATE>>> blocks for .md files
-- NEVER output <<<EDIT>>> or <<<REPLACE>>> blocks for .ts, .js, .py, or any code files
+- You may ONLY create/edit .md files (documentation)
+- NEVER output edits for .ts, .js, .py, or any code files
 - NEVER suggest code changes - your job is ONLY documentation
 - Use proper Markdown formatting (headers, lists, code blocks for examples)
+- When updating existing docs, use surgical EDIT blocks to modify specific sections (efficient!)
 - End with: "Ready to build? Switch to Keystone mode!"
 
 DOCUMENTATION TYPES:
@@ -602,8 +805,13 @@ DOCUMENTATION TYPES:
 TO CREATE A NEW DOCUMENT:
 <<<CREATE docs/filename.md>>>
 # Document Title
-
 Your markdown content here...
+<<<END>>>
+
+TO UPDATE AN EXISTING DOCUMENT (preferred for iterations):
+<<<EDIT docs/existing.md>>>
+<<<REPLACE lines 15-20>>>
+Updated section content here...
 <<<END>>>
 `;
 
@@ -688,6 +896,13 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 m.id === assistantMessageId ? { ...m, content: finalContent } : m
               )
             );
+            if (finalContent) persistMessage('assistant', finalContent);
+            publishAgentEvent({
+              type: 'tokens',
+              prompt: Math.round(JSON.stringify(messagesForRequest).length / 4),
+              completion: Math.round(finalContent.length / 4),
+              estimated: true,
+            });
             break;
           }
           
@@ -706,8 +921,18 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               if (fnName === 'read_file') return `🔍 Reading ${args.path}...`;
               if (fnName === 'search_files') return `🔎 Searching for "${args.pattern}"...`;
               if (fnName === 'tavily_search') return `🌐 Researching: ${args.query}...`;
+              if (fnName === 'run_command') return `Waiting to run: ${args.command}`;
+              if (fnName === 'open_terminal') return `Opening terminal "${args.name}"...`;
+              if (fnName === 'list_terminals') return `Checking open terminals...`;
               return `⚙️ Running ${fnName}...`;
             };
+
+            publishAgentEvent({
+              type: 'tool_call',
+              tool: fnName,
+              phase: 'start',
+              detail: String(args.path || args.pattern || args.query || args.command || args.name || ''),
+            });
             
             setMessages((prev) =>
               prev.map((m) =>
@@ -770,9 +995,56 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 result = `Search error: ${e instanceof Error ? e.message : 'Unknown error'}`;
               }
               console.log('[tavily_search] Returning:', result.slice(0, 300));
+            } else if (fnName === 'open_terminal') {
+              const t = terminals.create(String(args.name || 'agent'), (projectPath as string) || '/', 'agent');
+              result = `Terminal "${t.name}" is open (cwd: ${t.cwd}).`;
+            } else if (fnName === 'list_terminals') {
+              const all = terminals.list();
+              result = all.length
+                ? all.map((t) => `${t.name} — ${t.status} — ${t.cwd}`).join('\n')
+                : 'No terminals are open yet.';
+            } else if (fnName === 'run_command') {
+              const command = String(args.command || '').trim();
+              if (!command) {
+                result = 'Error: run_command needs a command.';
+              } else {
+                const termName = String(args.terminal || 'main').trim() || 'main';
+                const t =
+                  terminals.getByName(termName) ||
+                  terminals.create(termName, (projectPath as string) || '/', 'agent');
+                const approvalId = `ap_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+                publishAgentEvent({ type: 'status', status: 'waiting', detail: 'Waiting for command approval' });
+                const decisionPromise = waitForApproval(approvalId);
+                publishAgentEvent({
+                  type: 'approval_request',
+                  approvalId,
+                  command,
+                  terminal: t.name,
+                  source: 'real',
+                });
+                const decision = await decisionPromise;
+                publishAgentEvent({ type: 'status', status: 'working', detail: 'Assistant is working' });
+                if (decision === 'run') {
+                  const res = await terminals.run(t.id, command, 'agent');
+                  result =
+                    res.code === 0
+                      ? `Command finished.\nOutput:\n${res.output || '(no output)'}`
+                      : `Command exited with code ${res.code}.\nOutput:\n${res.output || '(no output)'}`;
+                } else {
+                  result =
+                    'The user denied this command. Do not run it again; ask the user how to proceed or continue without it.';
+                }
+              }
             } else {
               result = `Unknown tool: ${fnName}`;
             }
+
+            publishAgentEvent({
+              type: 'tool_call',
+              tool: fnName,
+              phase: 'end',
+              ok: !result.startsWith('Error'),
+            });
             
             conversationMessages.push({
               role: 'tool',
@@ -786,6 +1058,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
           toolLoopCount++;
         }
         
+        publishAgentEvent({ type: 'status', status: 'idle' });
         setIsLoading(false);
         setStreamingFile(undefined);
         setStreamingTool(undefined);
@@ -871,6 +1144,13 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
             }
           }
         }
+        if (accumulatedContent) persistMessage('assistant', accumulatedContent);
+        publishAgentEvent({
+          type: 'tokens',
+          prompt: Math.round(JSON.stringify(conversationMessages).length / 4),
+          completion: Math.round(accumulatedContent.length / 4),
+          estimated: true,
+        });
       } else {
         const data = await response.json();
         const content = data.choices?.[0]?.message?.content || '';
@@ -882,6 +1162,13 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               : m
           )
         );
+        if (content) persistMessage('assistant', content);
+        publishAgentEvent({
+          type: 'tokens',
+          prompt: Math.round(JSON.stringify(conversationMessages).length / 4),
+          completion: Math.round(content.length / 4),
+          estimated: true,
+        });
       }
     } catch (error) {
       const errorText = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -893,6 +1180,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         )
       );
     } finally {
+      publishAgentEvent({ type: 'status', status: 'idle' });
       setIsLoading(false);
       setStreamingFile(undefined);
       setStreamingTool(undefined);
@@ -957,17 +1245,34 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
           
           // Ensure parent directory exists
           const dirPath = filePath.substring(0, filePath.lastIndexOf(separator));
+          console.log('[Apply] File path:', filePath);
+          console.log('[Apply] Dir path:', dirPath);
+          console.log('[Apply] Project path:', projectPath);
+          
           if (dirPath && dirPath !== projectPath) {
             console.log('[Apply] Creating directory:', dirPath);
-            await window.electron.fs.createDir(dirPath);
+            try {
+              const mkdirResult = await window.electron.fs.createDir(dirPath);
+              console.log('[Apply] createDir result:', mkdirResult);
+            } catch (mkdirErr) {
+              console.error('[Apply] createDir FAILED:', mkdirErr);
+            }
           }
           
           const newContent = fileEdits[0].content || '';
           console.log('[Apply] Creating new file:', filePath, 'Content length:', newContent.length);
-          const writeResult = await window.electron.fs.writeFile(filePath, newContent);
-          console.log('[Apply] Write result:', writeResult);
-          onApplyEdit(filePath, newContent);
-          console.log('[Apply] Successfully created:', filePath);
+          try {
+            const writeResult = await window.electron.fs.writeFile(filePath, newContent);
+            console.log('[Apply] writeFile result:', writeResult);
+            if (writeResult?.success) {
+              onApplyEdit(filePath, newContent);
+              console.log('[Apply] Successfully created:', filePath);
+            } else {
+              console.error('[Apply] writeFile returned failure:', writeResult);
+            }
+          } catch (writeErr) {
+            console.error('[Apply] writeFile FAILED:', writeErr);
+          }
           continue;
         }
         
@@ -1277,6 +1582,68 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
 
         <AnimatePresence>
           {messages.filter(m => !(isLoading && m.role === 'assistant' && !m.content)).map((message) => (
+            message.role === 'approval' && message.approval ? (
+              <motion.div
+                key={message.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex gap-3"
+                data-testid={`card-approval-${message.approval.approvalId}`}
+              >
+                <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0 border border-amber-500/20">
+                  <ShieldAlert className="w-4 h-4 text-amber-400" />
+                </div>
+                <div className="max-w-[85%] flex-1 rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
+                  <div className="flex items-center gap-2 text-xs font-medium text-amber-300">
+                    <TerminalSquare className="w-3.5 h-3.5" />
+                    Command approval · {message.approval.terminal}
+                  </div>
+                  <code className="mt-2 block rounded-lg bg-black/40 px-3 py-2 font-mono text-sm text-gray-200">
+                    $ {message.approval.command}
+                  </code>
+                  {message.approval.decision === 'pending' ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => resolveApproval(message, 'run')}
+                        className="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 transition-colors"
+                        data-testid={`button-approve-${message.approval.approvalId}`}
+                      >
+                        <Play className="w-3 h-3" />
+                        Run
+                      </button>
+                      <button
+                        onClick={() => resolveApproval(message, 'deny')}
+                        className="flex items-center gap-1.5 rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20 transition-colors"
+                        data-testid={`button-deny-${message.approval.approvalId}`}
+                      >
+                        <X className="w-3 h-3" />
+                        Deny
+                      </button>
+                      <label className="ml-auto flex items-center gap-1.5 text-[11px] text-gray-400 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={autoApprove}
+                          onChange={(e) => setAutoApprove(e.target.checked)}
+                          className="h-3 w-3 accent-cyan-400"
+                          data-testid="checkbox-auto-approve"
+                        />
+                        Auto-approve this session
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-xs" data-testid={`status-approval-${message.approval.approvalId}`}>
+                      {message.approval.decision === 'run' ? (
+                        <span className="text-emerald-400">
+                          {message.approval.auto ? 'Auto-approved and ran' : 'Approved — ran in terminal'}
+                        </span>
+                      ) : (
+                        <span className="text-red-400">Denied — command never ran</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            ) : (
             <motion.div
               key={message.id}
               initial={{ opacity: 0, y: 10 }}
@@ -1330,6 +1697,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 </div>
               )}
             </motion.div>
+            )
           ))}
         </AnimatePresence>
 
@@ -1349,13 +1717,14 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about your code..."
+              placeholder={appMode === 'demo' ? 'Demo mode — sit back and watch the agent work' : 'Ask about your code...'}
+              disabled={appMode === 'demo'}
               rows={3}
               className="w-full px-4 py-3 pr-12 bg-[#0d0d12] border border-white/10 rounded-xl text-white placeholder:text-gray-500 resize-none focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50"
             />
             <button
               onClick={sendMessage}
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isLoading || appMode === 'demo'}
               className="absolute right-3 bottom-3 p-2 bg-gradient-to-r from-cyan-500 to-purple-500 hover:from-cyan-400 hover:to-purple-400 disabled:from-gray-600 disabled:to-gray-600 rounded-lg transition-all shadow-lg shadow-cyan-500/20"
             >
               <Send className="w-4 h-4 text-white" />
