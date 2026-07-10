@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshCw, Globe, EyeOff, FileCode } from 'lucide-react';
+import { RefreshCw, Globe, EyeOff, FileCode, Play, Loader2 } from 'lucide-react';
 import { subscribe } from '../lib/agent-events';
+import { terminals } from '../lib/terminal-sessions';
+import { discoverProject, type ProjectProfile } from '../lib/project-discovery';
 
 interface PreviewPanelProps {
   projectPath: string | null;
@@ -40,10 +42,17 @@ export function PreviewPanel({ projectPath }: PreviewPanelProps) {
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<number | null>(null);
-  const [liveServers, setLiveServers] = useState<string[]>([]);
-  const [selectedServer, setSelectedServer] = useState<string | null>(null);
+  // Seed from already-running servers — this panel only mounts while the
+  // Preview tab is open, so it usually misses the server_detected event.
+  const [liveServers, setLiveServers] = useState<string[]>(() => terminals.getActiveServers());
+  const [selectedServer, setSelectedServer] = useState<string | null>(
+    () => terminals.getActiveServers().slice(-1)[0] ?? null
+  );
   const [showLive, setShowLive] = useState(true);
   const [frameKey, setFrameKey] = useState(0);
+  const [profile, setProfile] = useState<ProjectProfile | null>(null);
+  const [port, setPort] = useState('');
+  const [starting, setStarting] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const liveUrl =
@@ -78,12 +87,48 @@ export function PreviewPanel({ projectPath }: PreviewPanelProps) {
     refresh();
   }, [refresh]);
 
+  // Identify the project (package.json / Python markers) so we can offer
+  // a one-click dev server with the right command and port.
+  useEffect(() => {
+    let alive = true;
+    setProfile(null);
+    if (!projectPath) return;
+    discoverProject(projectPath).then((p) => {
+      if (!alive) return;
+      setProfile(p);
+      if (p) setPort(String(p.defaultPort));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [projectPath]);
+
+  // Don't spin forever if the server never announces itself.
+  useEffect(() => {
+    if (!starting) return;
+    const t = setTimeout(() => setStarting(false), 30_000);
+    return () => clearTimeout(t);
+  }, [starting]);
+
+  const effectivePort = (() => {
+    const p = parseInt(port, 10);
+    return p > 0 && p <= 65535 ? p : profile?.defaultPort ?? 3000;
+  })();
+
+  const startServer = () => {
+    if (!profile || !projectPath || starting) return;
+    setStarting(true);
+    const t = terminals.create('dev server', projectPath, 'user');
+    terminals.run(t.id, profile.buildCommand(effectivePort), 'user').catch(() => setStarting(false));
+  };
+
   useEffect(() => {
     const unsub = subscribe((e) => {
       if (e.type === 'server_detected') {
         setLiveServers((prev) => (prev.includes(e.url) ? prev : [...prev, e.url]));
         setSelectedServer(e.url);
         setShowLive(true);
+        setStarting(false);
         setLastRefresh(Date.now());
       }
       if (e.type === 'server_lost') {
@@ -161,6 +206,34 @@ export function PreviewPanel({ projectPath }: PreviewPanelProps) {
           </button>
         </div>
       </div>
+      {profile && !showingLive && (
+        <div className="flex items-center gap-2 border-b border-white/10 bg-black/30 px-3 py-1.5 text-xs flex-shrink-0">
+          <span className="rounded bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300" data-testid="text-project-type">
+            {profile.label}
+          </span>
+          <span className="text-gray-500">detected</span>
+          <span className="text-gray-700">·</span>
+          <label className="text-gray-500">port</label>
+          <input
+            value={port}
+            onChange={(e) => setPort(e.target.value.replace(/[^0-9]/g, ''))}
+            className="w-14 bg-black/60 border border-white/10 rounded px-1.5 py-0.5 font-mono text-gray-200 text-xs focus:border-cyan-500/50 focus:outline-none"
+            data-testid="input-dev-port"
+          />
+          <button
+            onClick={startServer}
+            disabled={starting}
+            className="flex items-center gap-1 rounded bg-cyan-500/15 px-2 py-0.5 text-cyan-300 hover:bg-cyan-500/25 disabled:opacity-60 transition-colors"
+            data-testid="button-start-dev-server"
+          >
+            {starting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+            {starting ? 'waiting for server…' : 'Start dev server'}
+          </button>
+          <span className="text-gray-600 text-[10px] font-mono truncate min-w-0" title={profile.buildCommand(effectivePort)}>
+            {profile.buildCommand(effectivePort)}
+          </span>
+        </div>
+      )}
       {showingLive && liveUrl ? (
         <iframe
           key={frameKey}

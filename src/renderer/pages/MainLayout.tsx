@@ -125,6 +125,7 @@ export function MainLayout({ apiKey, mode = 'api', session = null, workspace = n
     const unsub = subscribe((e) => {
       if (e.type === 'approval_request') setDockTab('terminal');
       if (e.type === 'preview_refresh') setCenterView('preview');
+      if (e.type === 'server_detected') setCenterView('preview');
     });
     return unsub;
   }, []);

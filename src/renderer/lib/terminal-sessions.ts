@@ -165,6 +165,12 @@ class TerminalManager {
     }
   }
 
+  // Servers detected from still-running commands. Lets the preview panel
+  // catch up on mount — it may not have existed when server_detected fired.
+  getActiveServers(): string[] {
+    return [...this.activeServerUrls];
+  }
+
   private releaseServers(execId: string): void {
     this.scanTails.delete(execId);
     const urls = this.detectedServers.get(execId);
