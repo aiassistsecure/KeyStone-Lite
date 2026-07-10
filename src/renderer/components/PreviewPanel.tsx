@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshCw, Globe, EyeOff } from 'lucide-react';
+import { RefreshCw, Globe, EyeOff, FileCode } from 'lucide-react';
 import { subscribe } from '../lib/agent-events';
 
 interface PreviewPanelProps {
@@ -40,9 +40,26 @@ export function PreviewPanel({ projectPath }: PreviewPanelProps) {
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<number | null>(null);
+  const [liveServers, setLiveServers] = useState<string[]>([]);
+  const [selectedServer, setSelectedServer] = useState<string | null>(null);
+  const [showLive, setShowLive] = useState(true);
+  const [frameKey, setFrameKey] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const liveUrl =
+    selectedServer && liveServers.includes(selectedServer)
+      ? selectedServer
+      : liveServers.length > 0
+        ? liveServers[liveServers.length - 1]
+        : null;
+  const showingLive = Boolean(liveUrl && showLive);
+
   const refresh = useCallback(async () => {
+    if (showingLive) {
+      setFrameKey((k) => k + 1);
+      setLastRefresh(Date.now());
+      return;
+    }
     if (!projectPath) {
       setSrcDoc(null);
       return;
@@ -55,7 +72,7 @@ export function PreviewPanel({ projectPath }: PreviewPanelProps) {
     } finally {
       setRefreshing(false);
     }
-  }, [projectPath]);
+  }, [projectPath, showingLive]);
 
   useEffect(() => {
     refresh();
@@ -63,7 +80,19 @@ export function PreviewPanel({ projectPath }: PreviewPanelProps) {
 
   useEffect(() => {
     const unsub = subscribe((e) => {
-      if (e.type === 'preview_refresh' || e.type === 'file_write') {
+      if (e.type === 'server_detected') {
+        setLiveServers((prev) => (prev.includes(e.url) ? prev : [...prev, e.url]));
+        setSelectedServer(e.url);
+        setShowLive(true);
+        setLastRefresh(Date.now());
+      }
+      if (e.type === 'server_lost') {
+        setLiveServers((prev) => prev.filter((u) => u !== e.url));
+        setSelectedServer((cur) => (cur === e.url ? null : cur));
+      }
+      if ((e.type === 'preview_refresh' || e.type === 'file_write') && !showingLive) {
+        // Live dev servers hot-reload on their own; only the static
+        // snapshot needs rebuilding on file changes.
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(refresh, 350);
       }
@@ -78,12 +107,45 @@ export function PreviewPanel({ projectPath }: PreviewPanelProps) {
     <div className="h-full flex flex-col bg-[#07070c]">
       <div className="flex items-center justify-between border-b border-white/10 bg-black/40 px-3 py-1.5 flex-shrink-0">
         <div className="flex items-center gap-2 text-xs text-gray-400 min-w-0">
-          <Globe className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
-          <span className="font-mono truncate">
-            {projectPath ? `${projectPath.split(/[\\/]/).pop()}/index.html` : 'no workspace'}
+          <Globe className={`w-3.5 h-3.5 flex-shrink-0 ${showingLive ? 'text-green-400' : 'text-cyan-400'}`} />
+          <span className="font-mono truncate" data-testid="text-preview-source">
+            {showingLive
+              ? liveUrl
+              : projectPath
+                ? `${projectPath.split(/[\\/]/).pop()}/index.html`
+                : 'no workspace'}
           </span>
+          {showingLive && (
+            <span className="rounded-full bg-green-500/15 px-1.5 py-0.5 text-[10px] font-medium text-green-400 flex-shrink-0">
+              LIVE
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {liveServers.length > 1 && showingLive && (
+            <select
+              value={liveUrl || ''}
+              onChange={(e) => setSelectedServer(e.target.value)}
+              className="bg-black/60 border border-white/10 rounded text-[10px] text-gray-300 px-1 py-0.5 font-mono"
+              data-testid="select-live-server"
+            >
+              {liveServers.map((u) => (
+                <option key={u} value={u}>
+                  :{new URL(u).port}
+                </option>
+              ))}
+            </select>
+          )}
+          {liveUrl && (
+            <button
+              onClick={() => setShowLive((v) => !v)}
+              className={`transition-colors ${showingLive ? 'text-green-400 hover:text-cyan-400' : 'text-gray-500 hover:text-green-400'}`}
+              title={showingLive ? 'Show static index.html' : `Show live server (${liveUrl})`}
+              data-testid="button-toggle-live"
+            >
+              <FileCode className="w-3.5 h-3.5" />
+            </button>
+          )}
           {lastRefresh && (
             <span className="text-gray-600 text-[10px]">
               {new Date(lastRefresh).toLocaleTimeString()}
@@ -99,7 +161,16 @@ export function PreviewPanel({ projectPath }: PreviewPanelProps) {
           </button>
         </div>
       </div>
-      {srcDoc ? (
+      {showingLive && liveUrl ? (
+        <iframe
+          key={frameKey}
+          title="live preview"
+          className="flex-1 w-full bg-white"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
+          src={liveUrl}
+          data-testid="iframe-live-preview"
+        />
+      ) : srcDoc ? (
         <iframe
           title="preview"
           className="flex-1 w-full bg-white"
@@ -112,6 +183,9 @@ export function PreviewPanel({ projectPath }: PreviewPanelProps) {
           <EyeOff className="w-6 h-6" />
           <div className="text-xs">
             No <span className="font-mono text-gray-500">index.html</span> in this workspace yet
+          </div>
+          <div className="text-[10px] text-gray-700">
+            Start a dev server in the terminal and the preview will pick it up automatically
           </div>
         </div>
       )}

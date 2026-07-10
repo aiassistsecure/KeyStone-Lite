@@ -19,6 +19,11 @@ interface RunningExec {
 
 const MAX_CAPTURE = 16_000;
 
+const ANSI_RE = /\x1b\[[0-9;?]*[a-zA-Z]/g;
+const LOCAL_URL_RE = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})/gi;
+const LISTEN_RE = /listening\s+(?:on\s+)?(?:port\s+)?:?\s*(\d{4,5})/gi;
+const ON_PORT_RE = /on\s+port\s+:?\s*(\d{4,5})/gi;
+
 class TerminalManager {
   private sessions: TerminalSession[] = [];
   private listeners = new Set<TermListener>();
@@ -28,6 +33,9 @@ class TerminalManager {
   private counter = 0;
   private wired = false;
   private unsubs: Array<() => void> = [];
+  private scanTails = new Map<string, string>();
+  private detectedServers = new Map<string, Set<string>>();
+  private activeServerUrls = new Set<string>();
 
   private wireBridge(): void {
     if (this.wired) return;
@@ -40,11 +48,13 @@ class TerminalManager {
         if (!exec) return;
         exec.captured = (exec.captured + chunk).slice(-MAX_CAPTURE);
         this.appendOutput(exec.sessionId, chunk);
+        this.detectServers(execId, chunk);
       }),
       term.onExit((execId, code) => {
         const exec = this.running.get(execId);
         if (!exec) return;
         this.running.delete(execId);
+        this.releaseServers(execId);
         this.setStatus(exec.sessionId, 'idle');
         if (code !== null && code !== 0) {
           this.appendOutput(exec.sessionId, `\r\n\x1b[31m✗ exited with code ${code}\x1b[0m\r\n`);
@@ -105,6 +115,7 @@ class TerminalManager {
       if (exec.sessionId === id) {
         term?.kill(execId);
         this.running.delete(execId);
+        this.releaseServers(execId);
         exec.resolve({ output: exec.captured, code: null });
       }
     }
@@ -122,6 +133,47 @@ class TerminalManager {
     const prev = this.buffers.get(sessionId) || '';
     this.buffers.set(sessionId, (prev + chunk).slice(-200_000));
     for (const cb of this.outputListeners) cb(sessionId, chunk);
+  }
+
+  // Watch terminal output for local dev-server URLs ("Local: http://localhost:5173")
+  // or "listening on port 3000" style lines, and announce them so the preview
+  // panel can switch to a live view.
+  private detectServers(execId: string, chunk: string): void {
+    const clean = chunk.replace(ANSI_RE, '');
+    const tail = ((this.scanTails.get(execId) || '') + clean).slice(-2000);
+    this.scanTails.set(execId, tail);
+
+    const ports = new Set<number>();
+    for (const re of [LOCAL_URL_RE, LISTEN_RE, ON_PORT_RE]) {
+      for (const m of tail.matchAll(re)) {
+        const port = parseInt(m[1], 10);
+        if (port > 0 && port <= 65535) ports.add(port);
+      }
+    }
+
+    for (const port of ports) {
+      const url = `http://localhost:${port}/`;
+      if (this.activeServerUrls.has(url)) continue;
+      this.activeServerUrls.add(url);
+      let set = this.detectedServers.get(execId);
+      if (!set) {
+        set = new Set();
+        this.detectedServers.set(execId, set);
+      }
+      set.add(url);
+      publish({ type: 'server_detected', url, port });
+    }
+  }
+
+  private releaseServers(execId: string): void {
+    this.scanTails.delete(execId);
+    const urls = this.detectedServers.get(execId);
+    if (!urls) return;
+    this.detectedServers.delete(execId);
+    for (const url of urls) {
+      this.activeServerUrls.delete(url);
+      publish({ type: 'server_lost', url });
+    }
   }
 
   private setStatus(id: string, status: TerminalSession['status']): void {

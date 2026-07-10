@@ -13,7 +13,9 @@ export type AgentEvent =
   | { type: 'chat_delta'; msgId: string; delta: string }
   | { type: 'chat_done'; msgId: string }
   | { type: 'approval_request'; approvalId: string; command: string; terminal: string; source: 'demo' | 'real' }
-  | { type: 'approval_resolved'; approvalId: string; decision: 'run' | 'deny'; auto: boolean };
+  | { type: 'approval_resolved'; approvalId: string; decision: 'run' | 'deny'; auto: boolean }
+  | { type: 'server_detected'; url: string; port: number }
+  | { type: 'server_lost'; url: string };
 
 type Listener = (event: AgentEvent) => void;
 
