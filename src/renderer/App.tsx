@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { SetupScreen, type LaunchIntent } from './pages/SetupScreen';
 import { MainLayout } from './pages/MainLayout';
 import { DEMO_ROOT, swapToMemoryBridge, restoreRealBridge } from './lib/browser-bridge';
+import { swapToRemoteBridge, restoreFromRemoteBridge, envVirtualRoot } from './lib/remote-bridge';
+import { KeystoneClient, getKeystoneBaseUrl } from './lib/keystone-api';
 import { createSession, createWorkspace, getWorkspace, setActiveSession, touchSession } from './lib/sessions';
 import type { SessionInfo, WorkspaceInfo } from './types/electron';
 
@@ -42,7 +44,52 @@ export default function App() {
 
     const apiKey = intent.apiKey || storedApiKey;
 
+    // Enter a Keystone environment (remote = live over the API, local = checkout folder).
+    if (intent.environment && intent.envMode === 'remote') {
+      const client = new KeystoneClient(apiKey, await getKeystoneBaseUrl());
+      swapToRemoteBridge(client, intent.environment.id);
+      const ws = await createWorkspace(
+        `${intent.environment.name} (remote)`,
+        envVirtualRoot(intent.environment.id)
+      );
+      const session = await createSession('api', ws, `Remote — ${intent.environment.name}`, {
+        environmentId: intent.environment.id,
+        environmentName: intent.environment.name,
+        envMode: 'remote',
+      });
+      setLaunch({ mode: 'api', apiKey, session, workspace: ws });
+      return;
+    }
+
+    if (intent.environment && intent.envMode === 'local' && intent.checkoutFolder) {
+      await window.electron.project.setPath(intent.checkoutFolder);
+      const ws = await createWorkspace(intent.environment.name, intent.checkoutFolder);
+      const session = await createSession('api', ws, `Local — ${intent.environment.name}`, {
+        environmentId: intent.environment.id,
+        environmentName: intent.environment.name,
+        envMode: 'local',
+      });
+      setLaunch({ mode: 'api', apiKey, session, workspace: ws });
+      return;
+    }
+
     if (intent.session) {
+      // Restoring a remote-env session needs the remote bridge back in place.
+      if (intent.session.envMode === 'remote' && intent.session.environmentId) {
+        const client = new KeystoneClient(apiKey, await getKeystoneBaseUrl());
+        swapToRemoteBridge(client, intent.session.environmentId);
+        const ws =
+          intent.workspace ||
+          (await getWorkspace(intent.session.workspaceId)) ||
+          (await createWorkspace(
+            `${intent.session.environmentName || 'Environment'} (remote)`,
+            envVirtualRoot(intent.session.environmentId)
+          ));
+        await setActiveSession(intent.session.id);
+        await touchSession(intent.session.id);
+        setLaunch({ mode: 'api', apiKey, session: intent.session, workspace: ws });
+        return;
+      }
       const ws = intent.workspace || (await getWorkspace(intent.session.workspaceId));
       if (ws) {
         await window.electron.project.setPath(ws.path);
@@ -61,6 +108,7 @@ export default function App() {
   };
 
   const handleExitToSetup = () => {
+    restoreFromRemoteBridge();
     restoreRealBridge();
     setLaunch(null);
   };

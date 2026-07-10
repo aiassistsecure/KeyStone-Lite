@@ -64,7 +64,12 @@ export async function removeWorkspace(id: string): Promise<void> {
   }
 }
 
-export async function createSession(mode: 'demo' | 'api', workspace: WorkspaceInfo, name?: string): Promise<SessionInfo> {
+export async function createSession(
+  mode: 'demo' | 'api',
+  workspace: WorkspaceInfo,
+  name?: string,
+  extra?: Partial<Pick<SessionInfo, 'environmentId' | 'environmentName' | 'envMode'>>
+): Promise<SessionInfo> {
   const session: SessionInfo = {
     id: makeId('sess'),
     name: name || `${mode === 'demo' ? 'Demo' : 'Session'} — ${workspace.name}`,
@@ -74,10 +79,12 @@ export async function createSession(mode: 'demo' | 'api', workspace: WorkspaceIn
     createdAt: Date.now(),
     lastActiveAt: Date.now(),
     messageCount: 0,
+    ...(extra || {}),
   };
   await memPut('global', 'sessions', session.id, session);
   await memLink('global', `workspaces:${workspace.id}`, 'has_session', `sessions:${session.id}`);
-  if (mode === 'api' && workspace.path) {
+  // Remote env workspaces have a virtual path — never mirror onto it.
+  if (mode === 'api' && workspace.path && session.envMode !== 'remote') {
     // Mirror into the workspace's own memory so history travels with the folder.
     await memPut(workspace.path, 'sessions', session.id, session);
   }
@@ -90,7 +97,7 @@ export async function updateSession(id: string, patch: Partial<SessionInfo>): Pr
   if (!session) return null;
   const next = { ...session, ...patch, id: session.id };
   await memPut('global', 'sessions', id, next);
-  if (next.mode === 'api' && next.workspacePath) {
+  if (next.mode === 'api' && next.workspacePath && next.envMode !== 'remote') {
     await memPut(next.workspacePath, 'sessions', id, next);
   }
   return next;
@@ -143,7 +150,7 @@ function chatDocId(seq: number): string {
 
 export async function saveChatMessage(session: SessionInfo, record: ChatRecord): Promise<void> {
   await memPut('global', chatColl(session.id), chatDocId(record.seq), record);
-  if (session.mode === 'api' && session.workspacePath) {
+  if (session.mode === 'api' && session.workspacePath && session.envMode !== 'remote') {
     await memPut(session.workspacePath, chatColl(session.id), chatDocId(record.seq), record);
   }
   const summary =
@@ -159,7 +166,7 @@ export async function saveChatMessage(session: SessionInfo, record: ChatRecord):
 
 export async function loadChatMessages(session: SessionInfo): Promise<ChatRecord[]> {
   let records: ChatRecord[] = [];
-  if (session.mode === 'api' && session.workspacePath) {
+  if (session.mode === 'api' && session.workspacePath && session.envMode !== 'remote') {
     records = await memList<ChatRecord>(session.workspacePath, chatColl(session.id));
   }
   if (records.length === 0) {

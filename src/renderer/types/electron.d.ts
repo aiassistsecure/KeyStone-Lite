@@ -53,6 +53,10 @@ export interface SessionInfo {
   lastActiveAt: number;
   summary?: string;
   messageCount?: number;
+  /** Keystone environment binding (third door). */
+  environmentId?: string;
+  environmentName?: string;
+  envMode?: 'remote' | 'local';
 }
 
 export interface MemoryDocResult<T = unknown> {
@@ -97,6 +101,7 @@ export interface StoreSchema {
   workspaces: WorkspaceInfo[];
   sessions: SessionInfo[];
   activeSessionId: string;
+  keystoneBaseUrl: string;
 }
 
 declare global {

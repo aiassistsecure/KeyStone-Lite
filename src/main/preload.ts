@@ -1,6 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-contextBridge.exposeInMainWorld('electron', {
+// Exposed as 'electronHost' (not 'electron') because contextBridge properties
+// are read-only. The renderer copies this onto window.electron at startup so
+// the demo/remote bridges can swap window.electron freely.
+contextBridge.exposeInMainWorld('electronHost', {
   // Store operations
   store: {
     get: (key: string) => ipcRenderer.invoke('store:get', key),

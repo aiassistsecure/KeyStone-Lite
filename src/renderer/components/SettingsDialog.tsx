@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
   Key,
-  Palette,
   Settings2,
   Plus,
   Trash2,

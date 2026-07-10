@@ -6,7 +6,6 @@ import {
   File,
   Folder,
   FolderOpen,
-  Plus,
   RefreshCw,
 } from 'lucide-react';
 import type { FileEntry } from '../types/electron';

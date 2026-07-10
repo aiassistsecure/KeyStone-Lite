@@ -22,6 +22,8 @@ import { parseSurgicalEdits, applyMultipleEdits, type SurgicalEdit } from '../li
 import { streamToolCompletion } from '../lib/stream-completion';
 import { subscribe as subscribeAgentEvents, publish as publishAgentEvent } from '../lib/agent-events';
 import { terminals } from '../lib/terminal-sessions';
+import { KeystoneClient, getKeystoneBaseUrl, DEFAULT_KEYSTONE_BASE_URL } from '../lib/keystone-api';
+import { invalidateRemoteTree } from '../lib/remote-bridge';
 import { saveChatMessage, loadChatMessages, type ChatRecord } from '../lib/sessions';
 import type { SessionInfo } from '../types/electron';
 import ReactMarkdown from 'react-markdown';
@@ -251,7 +253,7 @@ async function readFileInProject(projectPath: string, filePath: string): Promise
   }
   
   const result = await window.electron.fs.readFile(fullPath);
-  if ('error' in result) return { error: result.error };
+  if ('error' in result) return { error: result.error || 'Could not read file' };
   return { content: result.content || '' };
 }
 
@@ -426,6 +428,59 @@ const LLM_TOOLS = [
   }
 ];
 
+// Terminal tool names that do not apply when working inside a remote Keystone
+// environment (the terminal panel itself stays local for the user, but the
+// agent gets app controls against the environment instead of a local shell).
+const LOCAL_TERMINAL_TOOL_NAMES = new Set(['run_command', 'open_terminal', 'list_terminals']);
+
+const REMOTE_APP_TOOLS = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'start_app',
+      description:
+        'Start the app process inside the remote Keystone environment. Only allowlisted app commands work (npm/pnpm/yarn run|start|dev|build, python, uvicorn, flask run, node). This is NOT a shell — one long-running app process per environment. The user must approve before it runs.',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: {
+            type: 'string',
+            description: 'App start command (e.g., "npm run dev", "python main.py", "uvicorn app:app")'
+          }
+        },
+        required: ['command']
+      }
+    }
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'stop_app',
+      description: 'Stop the running app process in the remote Keystone environment. The user must approve.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'get_logs',
+      description: 'Read recent output logs from the app process running in the remote Keystone environment.',
+      parameters: {
+        type: 'object',
+        properties: {
+          lines: {
+            type: 'number',
+            description: 'How many recent log lines to fetch (default 100, max 500)'
+          }
+        }
+      }
+    }
+  }
+];
+
 function waitForApproval(approvalId: string): Promise<'run' | 'deny'> {
   return new Promise((resolve) => {
     const unsub = subscribeAgentEvents((e) => {
@@ -496,6 +551,17 @@ export function ChatPanel({
   const [autoApprove, setAutoApprove] = useState(false);
   const autoApproveRef = useRef(false);
   const seqRef = useRef(0);
+
+  // Remote Keystone environment session: agent gets app controls instead of
+  // local terminal tools. The user's terminal panel always stays local.
+  const remoteEnvId = session?.envMode === 'remote' ? session.environmentId : undefined;
+  const keystoneBaseUrlRef = useRef(DEFAULT_KEYSTONE_BASE_URL);
+  useEffect(() => {
+    if (!remoteEnvId) return;
+    getKeystoneBaseUrl().then((url) => {
+      keystoneBaseUrlRef.current = url;
+    });
+  }, [remoteEnvId]);
 
   const persistMessage = (role: ChatRecord['role'], content: string, meta?: Record<string, unknown>) => {
     if (!session) return;
@@ -865,11 +931,14 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
             ? [...conversationMessages, { role: 'system', content: forceFinishMessage }]
             : conversationMessages;
           
+          const activeTools = remoteEnvId
+            ? [...LLM_TOOLS.filter((t) => !LOCAL_TERMINAL_TOOL_NAMES.has(t.function.name)), ...REMOTE_APP_TOOLS]
+            : LLM_TOOLS;
           const toolData = await streamToolCompletion({
             apiKey,
             model: model || 'llama-3.3-70b-versatile',
             messages: messagesForRequest,
-            tools: forceFinish ? undefined : LLM_TOOLS,
+            tools: forceFinish ? undefined : activeTools,
             tool_choice: forceFinish ? undefined : 'auto',
             temperature,
             maxTokens,
@@ -924,6 +993,9 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               if (fnName === 'run_command') return `Waiting to run: ${args.command}`;
               if (fnName === 'open_terminal') return `Opening terminal "${args.name}"...`;
               if (fnName === 'list_terminals') return `Checking open terminals...`;
+              if (fnName === 'start_app') return `Waiting to start app: ${args.command}`;
+              if (fnName === 'stop_app') return `Waiting to stop the remote app...`;
+              if (fnName === 'get_logs') return `Reading remote app logs...`;
               return `⚙️ Running ${fnName}...`;
             };
 
@@ -1033,6 +1105,64 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 } else {
                   result =
                     'The user denied this command. Do not run it again; ask the user how to proceed or continue without it.';
+                }
+              }
+            } else if (fnName === 'start_app' || fnName === 'stop_app') {
+              if (!remoteEnvId) {
+                result = 'Error: no remote environment is attached to this session.';
+              } else {
+                const command = fnName === 'start_app' ? String(args.command || '').trim() : 'stop the running app';
+                if (fnName === 'start_app' && !command) {
+                  result = 'Error: start_app needs a command.';
+                } else {
+                  const approvalId = `ap_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+                  publishAgentEvent({ type: 'status', status: 'waiting', detail: 'Waiting for approval' });
+                  const decisionPromise = waitForApproval(approvalId);
+                  publishAgentEvent({
+                    type: 'approval_request',
+                    approvalId,
+                    command: fnName === 'start_app' ? command : 'Stop the remote app',
+                    terminal: 'remote app',
+                    source: 'real',
+                  });
+                  const decision = await decisionPromise;
+                  publishAgentEvent({ type: 'status', status: 'working', detail: 'Assistant is working' });
+                  if (decision === 'run') {
+                    const client = new KeystoneClient(apiKey, keystoneBaseUrlRef.current);
+                    try {
+                      if (fnName === 'start_app') {
+                        const res = await client.run(remoteEnvId, command);
+                        invalidateRemoteTree();
+                        result = `App started.\nStatus: ${res.status}\nCommand: ${res.command}${
+                          res.port ? `\nPort: ${res.port}` : ''
+                        }${res.pid ? `\nPID: ${res.pid}` : ''}\nUse get_logs to check output.`;
+                      } else {
+                        const res = await client.stop(remoteEnvId);
+                        result = res.stopped
+                          ? 'App stopped.'
+                          : 'No app process was running.';
+                      }
+                    } catch (e) {
+                      result = `Error: ${e instanceof Error ? e.message : String(e)}`;
+                    }
+                  } else {
+                    result =
+                      'The user denied this action. Do not try it again; ask the user how to proceed or continue without it.';
+                  }
+                }
+              }
+            } else if (fnName === 'get_logs') {
+              if (!remoteEnvId) {
+                result = 'Error: no remote environment is attached to this session.';
+              } else {
+                const client = new KeystoneClient(apiKey, keystoneBaseUrlRef.current);
+                try {
+                  const lines = Math.min(Math.max(Number(args.lines) || 100, 1), 500);
+                  const res = await client.getLogs(remoteEnvId, lines);
+                  const logs = Array.isArray(res.logs) ? res.logs.join('\n') : typeof res.logs === 'string' ? res.logs : JSON.stringify(res);
+                  result = logs.trim() ? `Recent app logs:\n${logs}` : 'No log output yet.';
+                } catch (e) {
+                  result = `Error: ${e instanceof Error ? e.message : String(e)}`;
                 }
               }
             } else {

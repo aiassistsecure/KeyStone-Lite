@@ -16,6 +16,8 @@ import { MetricsPanel } from '../components/MetricsPanel';
 import { StatusBar } from '../components/StatusBar';
 import { startDemo, stopDemo } from '../lib/demo-adapter';
 import { subscribe } from '../lib/agent-events';
+import { KeystoneClient, getKeystoneBaseUrl } from '../lib/keystone-api';
+import { pullEnvironment, pushEnvironment } from '../lib/env-sync';
 import { TerminalSquare, Eye, Activity } from 'lucide-react';
 import type { SessionInfo, WorkspaceInfo } from '../types/electron';
 
@@ -46,6 +48,52 @@ export function MainLayout({ apiKey, mode = 'api', session = null, workspace = n
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [dockTab, setDockTab] = useState<DockTab>('terminal');
   const [centerView, setCenterView] = useState<CenterView>('code');
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncMessage, setSyncMessage] = useState('');
+
+  const isLocalEnv = session?.envMode === 'local' && !!session.environmentId && !!projectPath;
+
+  const reloadOpenFiles = async () => {
+    const refreshed = await Promise.all(
+      openFiles.map(async (f) => {
+        const result = await window.electron.fs.readFile(f.path);
+        if ('error' in result && result.error) return f;
+        return { ...f, content: result.content || '', isDirty: false };
+      })
+    );
+    setOpenFiles(refreshed);
+  };
+
+  const runEnvSync = async (direction: 'pull' | 'push') => {
+    if (!session?.environmentId || !projectPath || syncBusy) return;
+    setSyncBusy(true);
+    setSyncMessage('');
+    try {
+      const client = new KeystoneClient(apiKey, await getKeystoneBaseUrl());
+      const doIt = direction === 'pull' ? pullEnvironment : pushEnvironment;
+      let res = await doIt(client, session.environmentId, projectPath, {});
+      if (res.conflicts.length > 0) {
+        const overwrite = window.confirm(
+          `${res.conflicts.length} file(s) changed both here and in the environment:\n\n` +
+            res.conflicts.slice(0, 10).join('\n') +
+            (res.conflicts.length > 10 ? '\n...' : '') +
+            `\n\n${direction === 'pull' ? 'Overwrite your local copies with the environment version?' : 'Overwrite the environment with your local version?'}`
+        );
+        if (overwrite) {
+          res = await doIt(client, session.environmentId, projectPath, { force: true });
+        }
+      }
+      const moved = direction === 'pull' ? (res as { updated: string[] }).updated : (res as { uploaded: string[] }).uploaded;
+      const parts: string[] = [`${direction === 'pull' ? 'Pulled' : 'Pushed'} ${moved.length} file(s)`];
+      if (res.conflicts.length > 0) parts.push(`${res.conflicts.length} conflict(s) skipped`);
+      setSyncMessage(parts.join(' · '));
+      if (direction === 'pull' && moved.length > 0) await reloadOpenFiles();
+    } catch (e) {
+      setSyncMessage(`Sync failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSyncBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (workspace?.path) {
@@ -307,7 +355,16 @@ export function MainLayout({ apiKey, mode = 'api', session = null, workspace = n
         </PanelGroup>
       </div>
 
-      <StatusBar mode={mode} session={session} workspace={workspace} onExit={onExit} />
+      <StatusBar
+        mode={mode}
+        session={session}
+        workspace={workspace}
+        onExit={onExit}
+        onPull={isLocalEnv ? () => runEnvSync('pull') : undefined}
+        onPush={isLocalEnv ? () => runEnvSync('push') : undefined}
+        syncBusy={syncBusy}
+        syncMessage={syncMessage}
+      />
     </motion.div>
   );
 }

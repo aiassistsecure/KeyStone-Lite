@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { Database, LogOut, Play, KeyRound } from 'lucide-react';
+import { Database, LogOut, Play, KeyRound, Globe, HardDrive, ArrowDownToLine, ArrowUpFromLine, Loader2 } from 'lucide-react';
 import { getMetrics, subscribeMetrics } from '../lib/metrics';
 import type { SessionInfo, WorkspaceInfo } from '../types/electron';
 
@@ -8,6 +8,10 @@ interface StatusBarProps {
   session?: SessionInfo | null;
   workspace?: WorkspaceInfo | null;
   onExit?: () => void;
+  onPull?: () => void;
+  onPush?: () => void;
+  syncBusy?: boolean;
+  syncMessage?: string;
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -19,7 +23,7 @@ const STATUS_DOT: Record<string, string> = {
   done: 'bg-green-400',
 };
 
-export function StatusBar({ mode, session, workspace, onExit }: StatusBarProps) {
+export function StatusBar({ mode, session, workspace, onExit, onPull, onPush, syncBusy, syncMessage }: StatusBarProps) {
   const metrics = useSyncExternalStore(subscribeMetrics, getMetrics);
   const est = metrics.estimated ? '~' : '';
 
@@ -34,6 +38,64 @@ export function StatusBar({ mode, session, workspace, onExit }: StatusBarProps) 
         {mode === 'demo' ? <Play className="w-3 h-3" /> : <KeyRound className="w-3 h-3" />}
         {mode === 'demo' ? 'DEMO' : 'API'}
       </span>
+
+      {session?.envMode && (
+        <span
+          className={`flex items-center gap-1 font-semibold ${
+            session.envMode === 'remote' ? 'text-emerald-400' : 'text-cyan-300'
+          }`}
+          title={
+            session.envMode === 'remote'
+              ? 'Working live on the Keystone environment over the API'
+              : 'Working on a local checkout of the Keystone environment'
+          }
+          data-testid="badge-env-mode"
+        >
+          {session.envMode === 'remote' ? <Globe className="w-3 h-3" /> : <HardDrive className="w-3 h-3" />}
+          {session.envMode === 'remote' ? 'REMOTE ENV' : 'LOCAL ENV'}
+          {session.environmentName && (
+            <span className="text-gray-500 font-normal truncate max-w-[140px]">· {session.environmentName}</span>
+          )}
+        </span>
+      )}
+
+      {session?.envMode === 'local' && (onPull || onPush) && (
+        <span className="flex items-center gap-1">
+          {syncBusy ? (
+            <span className="flex items-center gap-1 text-cyan-300">
+              <Loader2 className="w-3 h-3 animate-spin" /> syncing
+            </span>
+          ) : (
+            <>
+              {onPull && (
+                <button
+                  onClick={onPull}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-white/10 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors"
+                  title="Pull latest changes from the environment"
+                  data-testid="button-env-pull"
+                >
+                  <ArrowDownToLine className="w-3 h-3" /> Pull
+                </button>
+              )}
+              {onPush && (
+                <button
+                  onClick={onPush}
+                  className="flex items-center gap-0.5 px-1.5 py-0.5 rounded border border-white/10 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors"
+                  title="Push your local changes to the environment"
+                  data-testid="button-env-push"
+                >
+                  <ArrowUpFromLine className="w-3 h-3" /> Push
+                </button>
+              )}
+            </>
+          )}
+          {syncMessage && (
+            <span className="text-gray-500 hidden lg:inline truncate max-w-[220px]" data-testid="text-sync-message">
+              {syncMessage}
+            </span>
+          )}
+        </span>
+      )}
 
       {workspace && (
         <span className="font-mono truncate max-w-[240px]" title={workspace.path} data-testid="text-status-workspace">

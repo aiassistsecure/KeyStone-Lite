@@ -16,15 +16,23 @@ import {
   History,
   Plus,
   Play,
+  Globe,
+  HardDrive,
+  Boxes,
 } from 'lucide-react';
 import type { SessionInfo, WorkspaceInfo } from '../types/electron';
 import { createWorkspace, listSessions, listWorkspaces } from '../lib/sessions';
+import { KeystoneClient, getKeystoneBaseUrl, type KeystoneEnvironment } from '../lib/keystone-api';
+import { checkoutEnvironment, loadManifest, pullEnvironment } from '../lib/env-sync';
 
 export interface LaunchIntent {
   mode: 'demo' | 'api';
   apiKey: string | null;
   workspace?: WorkspaceInfo;
   session?: SessionInfo;
+  environment?: { id: string; name: string };
+  envMode?: 'remote' | 'local';
+  checkoutFolder?: string;
 }
 
 interface SetupScreenProps {
@@ -79,6 +87,12 @@ export function SetupScreen({ onComplete, initialApiKey }: SetupScreenProps) {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [pickBusy, setPickBusy] = useState(false);
 
+  const [environments, setEnvironments] = useState<KeystoneEnvironment[]>([]);
+  const [envsLoading, setEnvsLoading] = useState(false);
+  const [envsError, setEnvsError] = useState('');
+  const [envBusy, setEnvBusy] = useState<string | null>(null);
+  const [envProgress, setEnvProgress] = useState('');
+
   useEffect(() => {
     if (step !== 'pick') return;
     (async () => {
@@ -86,7 +100,63 @@ export function SetupScreen({ onComplete, initialApiKey }: SetupScreenProps) {
       setWorkspaces(ws);
       setSessions(sess.filter((s) => s.mode === 'api').slice(0, 8));
     })();
+    (async () => {
+      setEnvsLoading(true);
+      setEnvsError('');
+      try {
+        const client = new KeystoneClient(apiKey, await getKeystoneBaseUrl());
+        setEnvironments(await client.listEnvironments());
+      } catch (e) {
+        setEnvsError(e instanceof Error ? e.message : 'Could not load environments');
+      } finally {
+        setEnvsLoading(false);
+      }
+    })();
   }, [step]);
+
+  const enterEnvRemote = (env: KeystoneEnvironment) => {
+    onComplete({
+      mode: 'api',
+      apiKey,
+      environment: { id: env.id, name: env.name },
+      envMode: 'remote',
+    });
+  };
+
+  const enterEnvLocal = async (env: KeystoneEnvironment) => {
+    const folder = await window.electron.dialog.openFolder();
+    if (!folder) return;
+    setEnvBusy(env.id);
+    setEnvsError('');
+    try {
+      const client = new KeystoneClient(apiKey, await getKeystoneBaseUrl());
+      const manifest = await loadManifest(folder);
+      if (!manifest) {
+        setEnvProgress('Downloading files...');
+        await checkoutEnvironment(client, env.id, folder, (done, total, current) => {
+          setEnvProgress(`Downloading ${done}/${total}: ${current}`);
+        });
+      } else if (manifest.envId !== env.id) {
+        setEnvsError('That folder belongs to a different environment. Pick another folder.');
+        return;
+      } else {
+        setEnvProgress('Pulling latest changes...');
+        await pullEnvironment(client, env.id, folder);
+      }
+      onComplete({
+        mode: 'api',
+        apiKey,
+        environment: { id: env.id, name: env.name },
+        envMode: 'local',
+        checkoutFolder: folder,
+      });
+    } catch (e) {
+      setEnvsError(e instanceof Error ? e.message : 'Checkout failed');
+    } finally {
+      setEnvBusy(null);
+      setEnvProgress('');
+    }
+  };
 
   const validateKey = async () => {
     if (!apiKey.trim()) {
@@ -326,7 +396,7 @@ export function SetupScreen({ onComplete, initialApiKey }: SetupScreenProps) {
         {step === 'pick' && (
           <motion.div
             key="pick"
-            className="relative z-10 w-full max-w-3xl mx-4"
+            className="relative z-10 w-full max-w-5xl mx-4"
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -20, opacity: 0 }}
@@ -341,11 +411,76 @@ export function SetupScreen({ onComplete, initialApiKey }: SetupScreenProps) {
               </button>
               <h1 className="text-xl font-bold text-white mb-1">Where do you want to work?</h1>
               <p className="text-gray-400 text-sm mb-6">
-                Open a workspace, or restore a previous session — everything is remembered by NEDB
-                ENGINE.
+                Open a workspace, restore a previous session, or enter one of your Keystone
+                environments.
               </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <div className="flex items-center gap-2 text-gray-300 text-sm font-semibold mb-3">
+                    <Boxes className="w-4 h-4 text-emerald-400" />
+                    Keystone environments
+                  </div>
+                  {envsLoading ? (
+                    <div className="flex items-center gap-2 text-gray-500 text-xs bg-black/30 border border-white/10 rounded-xl p-4">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading environments...
+                    </div>
+                  ) : environments.length === 0 ? (
+                    <div className="text-gray-500 text-xs bg-black/30 border border-white/10 rounded-xl p-4">
+                      {envsError
+                        ? `Could not load environments: ${envsError}`
+                        : 'No environments yet. Create one in Keystone on aiassist.net and it will show up here.'}
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                      {envsError && (
+                        <div className="text-red-400 text-xs bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+                          {envsError}
+                        </div>
+                      )}
+                      {environments.map((env) => (
+                        <div
+                          key={env.id}
+                          className="bg-black/30 border border-white/10 rounded-xl px-4 py-3"
+                          data-testid={`card-environment-${env.id}`}
+                        >
+                          <div className="text-white text-sm font-medium truncate">{env.name}</div>
+                          {env.description && (
+                            <div className="text-gray-500 text-xs mt-0.5 truncate">{env.description}</div>
+                          )}
+                          {envBusy === env.id ? (
+                            <div className="flex items-center gap-2 text-emerald-300 text-xs mt-2">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              <span className="truncate">{envProgress || 'Working...'}</span>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2 mt-2">
+                              <button
+                                onClick={() => enterEnvRemote(env)}
+                                disabled={envBusy !== null}
+                                className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 text-xs font-semibold transition-all disabled:opacity-50"
+                                title="Work directly on the environment's files over the API"
+                                data-testid={`button-env-remote-${env.id}`}
+                              >
+                                <Globe className="w-3 h-3" /> Remote
+                              </button>
+                              <button
+                                onClick={() => enterEnvLocal(env)}
+                                disabled={envBusy !== null}
+                                className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 text-xs font-semibold transition-all disabled:opacity-50"
+                                title="Download the files to a local folder, then Pull/Push to sync"
+                                data-testid={`button-env-local-${env.id}`}
+                              >
+                                <HardDrive className="w-3 h-3" /> Local
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div>
                   <div className="flex items-center gap-2 text-gray-300 text-sm font-semibold mb-3">
                     <History className="w-4 h-4 text-purple-400" />

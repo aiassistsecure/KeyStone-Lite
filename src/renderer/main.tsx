@@ -3,6 +3,14 @@ import ReactDOM from 'react-dom/client';
 import './styles/globals.css';
 import { installBrowserBridgeIfNeeded } from './lib/browser-bridge';
 
+// In Electron, the preload script exposes the real bridge as the read-only
+// window.electronHost. Copy it onto window.electron (a normal writable
+// property) so demo/remote bridge swaps can reassign it without crashing.
+const hostBridge = (window as unknown as { electronHost?: Window['electron'] }).electronHost;
+if (hostBridge) {
+  window.electron = hostBridge;
+}
+
 installBrowserBridgeIfNeeded();
 
 import * as monaco from 'monaco-editor';
