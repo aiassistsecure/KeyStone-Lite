@@ -42,6 +42,12 @@ interface SetupScreenProps {
 
 type Step = 'door' | 'key' | 'pick';
 
+function formatEnvDate(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return timeAgo(d.getTime());
+}
+
 function timeAgo(ts: number): string {
   const s = Math.floor((Date.now() - ts) / 1000);
   if (s < 60) return 'just now';
@@ -444,9 +450,26 @@ export function SetupScreen({ onComplete, initialApiKey }: SetupScreenProps) {
                           className="bg-black/30 border border-white/10 rounded-xl px-4 py-3"
                           data-testid={`card-environment-${env.id}`}
                         >
-                          <div className="text-white text-sm font-medium truncate">{env.name}</div>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="text-white text-sm font-medium truncate">{env.name}</div>
+                            <span
+                              className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                                env.status === 'active' || env.status === 'running'
+                                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                                  : 'bg-white/5 text-gray-400 border border-white/10'
+                              }`}
+                              data-testid={`text-env-status-${env.id}`}
+                            >
+                              {env.status || 'unknown'}
+                            </span>
+                          </div>
                           {env.description && (
                             <div className="text-gray-500 text-xs mt-0.5 truncate">{env.description}</div>
+                          )}
+                          {env.updated_at && (
+                            <div className="text-gray-600 text-[10px] mt-0.5" data-testid={`text-env-updated-${env.id}`}>
+                              Updated {formatEnvDate(env.updated_at)}
+                            </div>
                           )}
                           {envBusy === env.id ? (
                             <div className="flex items-center gap-2 text-emerald-300 text-xs mt-2">
