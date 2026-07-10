@@ -16,6 +16,7 @@ import {
   ShieldAlert,
   TerminalSquare,
   Square,
+  Crosshair,
 } from 'lucide-react';
 import type { OpenFile } from '../pages/MainLayout';
 import { ModelSelector } from './ModelSelector';
@@ -68,9 +69,9 @@ function parseCodeBlocks(content: string): (string | CodeBlock)[] {
 }
 
 const THINKING_PHRASES = [
-  { text: "Working on your code", emoji: "⚡" },
-  { text: "Thinking about the solution", emoji: "🧠" },
-  { text: "Coding", emoji: "✨" },
+  { text: "PROCESSING DIRECTIVE" },
+  { text: "COMPUTING SOLUTION" },
+  { text: "EXECUTING WRITE OPS" },
 ];
 
 interface ThinkingAnimationProps {
@@ -114,30 +115,29 @@ function ThinkingAnimation({ activeFile, activeTool, activeOperation }: Thinking
       animate={{ opacity: 1, y: 0 }}
       className="flex gap-3"
     >
-      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500/30 to-purple-500/30 flex items-center justify-center overflow-hidden">
+      <div className="w-8 h-8 rounded-none border border-cyan-500/40 bg-cyan-500/10 flex items-center justify-center overflow-hidden flex-shrink-0">
         <motion.div
-          animate={{ 
-            rotate: [0, 10, -10, 0],
-            scale: [1, 1.1, 1]
-          }}
-          transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+          animate={{ rotate: 360 }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
         >
-          <Sparkles className="w-4 h-4 text-cyan-400" />
+          <Crosshair className="w-4 h-4 text-cyan-400" />
         </motion.div>
       </div>
       <motion.div 
-        className="bg-gradient-to-r from-cyan-500/10 to-purple-500/10 rounded-xl px-4 py-3 border border-white/5"
+        className="relative rounded-none border border-cyan-500/25 bg-black/40 px-4 py-3"
         animate={{ 
           boxShadow: [
             '0 0 0 0 rgba(34, 211, 238, 0)',
-            '0 0 20px 2px rgba(34, 211, 238, 0.15)',
+            '0 0 14px 1px rgba(34, 211, 238, 0.12)',
             '0 0 0 0 rgba(34, 211, 238, 0)'
           ]
         }}
         transition={{ duration: 2, repeat: Infinity }}
       >
+        <span className="pointer-events-none absolute -top-px -left-px h-2 w-2 border-t border-l border-cyan-400/70" />
+        <span className="pointer-events-none absolute -bottom-px -right-px h-2 w-2 border-b border-r border-cyan-400/70" />
         <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <AnimatePresence mode="wait">
               <motion.span
                 key={phraseIndex}
@@ -145,25 +145,16 @@ function ThinkingAnimation({ activeFile, activeTool, activeOperation }: Thinking
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -5 }}
                 transition={{ duration: 0.3 }}
-                className="text-sm text-gray-300 flex items-center gap-2"
+                className="font-mono text-xs tracking-[0.2em] text-cyan-300"
               >
-                <span>{phrase.emoji}</span>
-                <span>{phrase.text}</span>
+                {phrase.text}
               </motion.span>
             </AnimatePresence>
-            <span className="flex gap-0.5">
-              {[0, 1, 2].map((i) => (
-                <motion.span
-                  key={i}
-                  animate={{ 
-                    opacity: [0.3, 1, 0.3],
-                    y: [0, -2, 0]
-                  }}
-                  transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15 }}
-                  className="text-cyan-400 font-bold"
-                >•</motion.span>
-              ))}
-            </span>
+            <motion.span
+              animate={{ opacity: [1, 0, 1] }}
+              transition={{ duration: 0.9, repeat: Infinity }}
+              className="font-mono text-xs text-cyan-400"
+            >▮</motion.span>
           </div>
           {displayFile && (
             <AnimatePresence mode="wait">
@@ -172,10 +163,10 @@ function ThinkingAnimation({ activeFile, activeTool, activeOperation }: Thinking
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 10 }}
-                className="flex items-center gap-2 text-xs text-gray-500"
+                className="flex items-center gap-2 font-mono text-[11px] tracking-wider text-gray-500"
               >
                 <FileCode className="w-3 h-3" />
-                <span>{activityLabel && `${activityLabel} `}<span className="text-cyan-400/70 font-mono">{displayFile}</span></span>
+                <span>{activityLabel && `${activityLabel.toUpperCase()} `}<span className="text-cyan-400/80">{displayFile}</span></span>
               </motion.div>
             </AnimatePresence>
           )}
@@ -1717,15 +1708,15 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
     return (
       <>
         {edits.length > 0 && (
-          <div className={`my-2 p-3 rounded-lg border ${
+          <div className={`my-2 p-3 rounded-none border ${
             mode === 'keystone' || isApplied
-              ? 'bg-green-500/10 border-green-500/30' 
-              : 'bg-amber-500/10 border-amber-500/30'
+              ? 'bg-green-500/10 border-green-500/30 border-l-2 border-l-green-400/70' 
+              : 'bg-amber-500/10 border-amber-500/30 border-l-2 border-l-amber-400/70'
           }`}>
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <FileEdit className={`w-4 h-4 ${mode === 'keystone' || isApplied ? 'text-green-400' : 'text-amber-400'}`} />
-                <span className={`text-sm font-medium ${mode === 'keystone' || isApplied ? 'text-green-400' : 'text-amber-400'}`}>
+                <span className={`font-mono text-[11px] uppercase tracking-[0.15em] ${mode === 'keystone' || isApplied ? 'text-green-400' : 'text-amber-400'}`}>
                   {mode === 'keystone' || isApplied ? 'Applied' : 'Surgical Edits'} ({edits.length})
                 </span>
               </div>
@@ -1736,7 +1727,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                     await applySurgicalEdits(edits);
                     setAppliedMessageIds(prev => new Set(prev).add(messageId));
                   }}
-                  className="flex items-center gap-1 px-3 py-1 text-xs bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 rounded-lg transition-colors font-medium"
+                  className="flex items-center gap-1 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.1em] bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:bg-amber-500/30 rounded-none transition-colors"
                 >
                   <FileEdit className="w-3.5 h-3.5" />
                   Apply All
@@ -1745,9 +1736,9 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
             </div>
             <div className="space-y-2 text-xs">
               {edits.map((edit, i) => (
-                <div key={i} className="border border-white/10 rounded-lg overflow-hidden">
+                <div key={i} className="border border-white/10 rounded-none overflow-hidden">
                   <div className="flex items-center gap-2 px-2 py-1 bg-white/5">
-                    <span className={`px-1.5 py-0.5 rounded text-xs font-mono ${
+                    <span className={`px-1.5 py-0.5 rounded-none text-xs font-mono ${
                       edit.type === 'insert' ? 'bg-green-500/20 text-green-400' :
                       edit.type === 'delete' ? 'bg-red-500/20 text-red-400' :
                       'bg-blue-500/20 text-blue-400'
@@ -1784,8 +1775,8 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
           }
           
           return (
-            <div key={index} className="my-2 rounded-lg overflow-hidden border border-white/10">
-              <div className="flex items-center justify-between px-3 py-1.5 bg-white/5 border-b border-white/10">
+            <div key={index} className="my-2 rounded-none overflow-hidden border border-cyan-500/20">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-cyan-500/[0.06] border-b border-cyan-500/20">
                 <div className="flex items-center gap-2">
                   <FileCode className="w-3.5 h-3.5 text-cyan-400" />
                   <span className="text-xs text-gray-400 font-mono">
@@ -1796,7 +1787,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                   {part.filename && (
                     <button
                       onClick={() => applyCodeToFile(part.filename!, part.code)}
-                      className="flex items-center gap-1 px-2 py-0.5 text-xs bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 rounded transition-colors"
+                      className="flex items-center gap-1 px-2 py-0.5 font-mono text-[11px] uppercase tracking-[0.1em] bg-cyan-500/20 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/30 rounded-none transition-colors"
                     >
                       <FileEdit className="w-3 h-3" />
                       Apply
@@ -1804,7 +1795,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                   )}
                   <button
                     onClick={() => navigator.clipboard.writeText(part.code)}
-                    className="flex items-center gap-1 px-2 py-0.5 text-xs text-gray-400 hover:text-white hover:bg-white/10 rounded transition-colors"
+                    className="flex items-center gap-1 px-2 py-0.5 text-xs text-gray-400 hover:text-white hover:bg-white/10 rounded-none transition-colors"
                   >
                     <Copy className="w-3 h-3" />
                   </button>
@@ -1828,40 +1819,45 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a0f] relative">
-      <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-cyan-500/10 via-transparent to-purple-500/10 pointer-events-none" />
-      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent" />
-      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-purple-500/50 to-transparent" />
+    <div className="h-full flex flex-col bg-[#05070a] relative">
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ backgroundImage: 'linear-gradient(rgba(34,211,238,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(34,211,238,0.03) 1px, transparent 1px)', backgroundSize: '32px 32px' }}
+      />
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ backgroundImage: 'repeating-linear-gradient(0deg, rgba(148,210,255,0.025) 0px, rgba(148,210,255,0.025) 1px, transparent 1px, transparent 3px)' }}
+      />
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent" />
+      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-amber-400/40 to-transparent" />
       
-      <div className="px-4 py-3 border-b border-white/10 relative z-[200] bg-gradient-to-r from-cyan-500/5 via-transparent to-purple-500/5">
+      <div className="px-4 py-3 border-b border-cyan-500/15 relative z-[200] bg-black/40">
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2 relative">
-            <div className="relative">
-              <Sparkles className="w-4 h-4 text-cyan-400" />
-              <motion.div
-                className="absolute inset-0"
-                animate={{ opacity: [0.3, 0.8, 0.3], rotate: [0, 180, 360] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-              >
-                <Sparkles className="w-4 h-4 text-purple-400" />
-              </motion.div>
-            </div>
-            <span className="text-sm font-semibold bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">Chat</span>
+          <div className="flex items-center gap-2.5 relative">
+            <span className="relative flex h-2 w-2">
+              <motion.span
+                className="absolute inline-flex h-full w-full rounded-full bg-cyan-400"
+                animate={{ opacity: [0.2, 0.9, 0.2], scale: [1, 1.6, 1] }}
+                transition={{ duration: 2.4, repeat: Infinity }}
+              />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-400/80" />
+            </span>
+            <span className="font-mono text-xs font-semibold tracking-[0.25em] text-cyan-300">AI LINK</span>
             {contextFiles.length > 0 && (
-              <span className="flex items-center gap-1 px-2 py-0.5 bg-cyan-500/20 border border-cyan-500/30 rounded-full text-xs text-cyan-400">
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-cyan-500/10 border border-cyan-500/30 rounded-none font-mono text-[10px] tracking-wider text-cyan-400">
                 <Paperclip className="w-3 h-3" />
-                {contextFiles.length} file{contextFiles.length > 1 ? 's' : ''}
+                CTX {String(contextFiles.length).padStart(2, '0')}
               </span>
             )}
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <div className="flex bg-gray-800/80 rounded-lg p-0.5 border border-white/10">
+              <div className="flex bg-black/60 rounded-none p-0.5 border border-cyan-500/20">
                 <button
                   onClick={() => setMode('debug')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                  className={`px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] rounded-none transition-all duration-200 ${
                     mode === 'debug'
-                      ? 'bg-cyan-500/20 text-cyan-400 shadow-sm'
+                      ? 'bg-cyan-500/15 text-cyan-300 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.4)]'
                       : 'text-gray-500 hover:text-gray-300'
                   }`}
                   title="Debug Mode: Review surgical edits before applying"
@@ -1870,9 +1866,9 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 </button>
                 <button
                   onClick={() => setMode('focus')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 ${
+                  className={`px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] rounded-none transition-all duration-200 ${
                     mode === 'focus'
-                      ? 'bg-purple-500/20 text-purple-400 shadow-sm'
+                      ? 'bg-purple-500/15 text-purple-300 shadow-[inset_0_0_0_1px_rgba(192,132,252,0.4)]'
                       : 'text-gray-500 hover:text-gray-300'
                   }`}
                   title="Focus Mode: Research & documentation only"
@@ -1881,9 +1877,9 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 </button>
                 <button
                   onClick={() => setMode('keystone')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200 flex items-center gap-1 ${
+                  className={`px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] rounded-none transition-all duration-200 flex items-center gap-1 ${
                     mode === 'keystone'
-                      ? 'bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 text-amber-400 shadow-sm'
+                      ? 'bg-amber-500/15 text-amber-300 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.45)]'
                       : 'text-gray-500 hover:text-gray-300'
                   }`}
                   title="Keystone Mode: Agentic coding with auto-apply"
@@ -1897,7 +1893,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               <button
                 onClick={clearChat}
                 disabled={isLoading}
-                className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                className="flex items-center gap-1 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-gray-400 hover:text-white hover:bg-white/10 rounded-none transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
                 title={
                   isLoading
                     ? 'Wait for the assistant to finish before starting a new chat'
@@ -1919,7 +1915,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               return (
                 <span
                   key={path}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-cyan-500/10 border border-cyan-500/30 rounded text-xs text-cyan-400"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-cyan-500/[0.06] border border-cyan-500/25 rounded-none font-mono text-[11px] text-cyan-400"
                 >
                   <FileCode className="w-3 h-3" />
                   {name}
@@ -1939,21 +1935,26 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
       <div className="flex-1 overflow-y-auto p-4 space-y-4 relative z-0">
         {messages.length === 0 && (
           <div className="text-center py-12">
-            <div className="relative inline-block">
-              <Bot className="w-16 h-16 text-cyan-500/50 mx-auto mb-4" />
+            <div className="relative inline-block mb-4">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
+              >
+                <Crosshair className="w-14 h-14 text-cyan-500/40 mx-auto" />
+              </motion.div>
               <motion.div
                 className="absolute inset-0 flex items-center justify-center"
-                animate={{ opacity: [0.2, 0.6, 0.2], scale: [0.95, 1.05, 0.95] }}
-                transition={{ duration: 3, repeat: Infinity }}
+                animate={{ opacity: [0.2, 0.8, 0.2] }}
+                transition={{ duration: 2.4, repeat: Infinity }}
               >
-                <Sparkles className="w-6 h-6 text-purple-400" />
+                <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
               </motion.div>
             </div>
-            <p className="text-transparent bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-base font-medium">
-              Ask me anything about your code
+            <p className="font-mono text-xs tracking-[0.3em] text-cyan-300">
+              SYSTEMS NOMINAL
             </p>
-            <p className="text-gray-500 text-xs mt-2">
-              Add files to context for better assistance
+            <p className="font-mono text-[11px] tracking-[0.2em] text-gray-500 mt-2">
+              AWAITING DIRECTIVE · ADD FILES TO CONTEXT
             </p>
           </div>
         )}
@@ -1968,22 +1969,22 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 className="flex gap-3"
                 data-testid={`card-approval-${message.approval.approvalId}`}
               >
-                <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0 border border-amber-500/20">
+                <div className="w-8 h-8 rounded-none bg-amber-500/15 flex items-center justify-center flex-shrink-0 border border-amber-500/30">
                   <ShieldAlert className="w-4 h-4 text-amber-400" />
                 </div>
-                <div className="max-w-[85%] flex-1 rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
-                  <div className="flex items-center gap-2 text-xs font-medium text-amber-300">
+                <div className="max-w-[85%] flex-1 rounded-none border border-amber-500/30 border-l-2 border-l-amber-400/70 bg-amber-500/5 px-4 py-3">
+                  <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] text-amber-300">
                     <TerminalSquare className="w-3.5 h-3.5" />
-                    Command approval · {message.approval.terminal}
+                    Command Auth · {message.approval.terminal}
                   </div>
-                  <code className="mt-2 block rounded-lg bg-black/40 px-3 py-2 font-mono text-sm text-gray-200">
+                  <code className="mt-2 block rounded-none border border-white/10 bg-black/50 px-3 py-2 font-mono text-sm text-gray-200">
                     $ {message.approval.command}
                   </code>
                   {message.approval.decision === 'pending' ? (
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <button
                         onClick={() => resolveApproval(message, 'run')}
-                        className="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 transition-colors"
+                        className="flex items-center gap-1.5 rounded-none bg-emerald-500/20 border border-emerald-500/30 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-emerald-300 hover:bg-emerald-500/30 transition-colors"
                         data-testid={`button-approve-${message.approval.approvalId}`}
                       >
                         <Play className="w-3 h-3" />
@@ -1991,7 +1992,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                       </button>
                       <button
                         onClick={() => resolveApproval(message, 'deny')}
-                        className="flex items-center gap-1.5 rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20 transition-colors"
+                        className="flex items-center gap-1.5 rounded-none bg-red-500/10 border border-red-500/30 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.1em] text-red-300 hover:bg-red-500/20 transition-colors"
                         data-testid={`button-deny-${message.approval.approvalId}`}
                       >
                         <X className="w-3 h-3" />
@@ -2029,16 +2030,16 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : ''}`}
             >
               {message.role === 'assistant' && (
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500/30 to-purple-500/30 flex items-center justify-center flex-shrink-0 border border-cyan-500/20">
+                <div className="w-8 h-8 rounded-none bg-cyan-500/10 flex items-center justify-center flex-shrink-0 border border-cyan-500/30">
                   <Bot className="w-4 h-4 text-cyan-400" />
                 </div>
               )}
 
               <div
-                className={`max-w-[85%] rounded-xl px-4 py-3 relative ${
+                className={`max-w-[85%] rounded-none px-4 py-3 relative ${
                   message.role === 'user'
-                    ? 'bg-gradient-to-br from-purple-500/20 to-cyan-500/20 text-white border border-purple-500/20'
-                    : 'bg-white/5 text-gray-300 border border-white/10'
+                    ? 'bg-emerald-500/[0.06] text-white border border-emerald-500/25 border-r-2 border-r-emerald-400/60'
+                    : 'bg-black/30 text-gray-300 border border-cyan-500/15 border-l-2 border-l-cyan-400/50'
                 }`}
               >
                 <div className="text-sm">
@@ -2052,7 +2053,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 {message.role === 'assistant' && (
                   <button
                     onClick={() => copyToClipboard(message.content, message.id)}
-                    className="mt-2 flex items-center gap-1 text-xs text-gray-500 hover:text-white"
+                    className="mt-2 flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-gray-500 hover:text-white"
                   >
                     {copiedId === message.id ? (
                       <>
@@ -2070,8 +2071,8 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               </div>
 
               {message.role === 'user' && (
-                <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center flex-shrink-0">
-                  <User className="w-4 h-4 text-purple-400" />
+                <div className="w-8 h-8 rounded-none bg-emerald-500/10 flex items-center justify-center flex-shrink-0 border border-emerald-500/30">
+                  <User className="w-4 h-4 text-emerald-400" />
                 </div>
               )}
             </motion.div>
@@ -2086,25 +2087,28 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="p-4 border-t border-white/10 relative z-10 bg-gradient-to-r from-cyan-500/5 via-transparent to-purple-500/5">
+      <div className="p-4 border-t border-cyan-500/15 relative z-10 bg-black/40">
         <div className="relative group">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 via-purple-500/30 to-cyan-500/30 rounded-xl opacity-0 group-focus-within:opacity-100 transition-opacity blur-sm" />
+          <div className="absolute -inset-0.5 bg-cyan-500/20 rounded-none opacity-0 group-focus-within:opacity-100 transition-opacity blur-sm" />
           <div className="relative">
+            <span className="pointer-events-none absolute top-0 left-0 z-10 h-2.5 w-2.5 border-t border-l border-cyan-400/60" />
+            <span className="pointer-events-none absolute top-0 right-0 z-10 h-2.5 w-2.5 border-t border-r border-cyan-400/60" />
+            <span className="pointer-events-none absolute bottom-1.5 left-0 z-10 h-2.5 w-2.5 border-b border-l border-cyan-400/60" />
             <textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={appMode === 'demo' ? 'Demo mode — sit back and watch the agent work' : 'Ask about your code...'}
+              placeholder={appMode === 'demo' ? 'DEMO MODE — AGENT HAS THE CONTROLS' : '> ENTER DIRECTIVE'}
               disabled={appMode === 'demo'}
               rows={3}
-              className="w-full px-4 py-3 pr-12 bg-[#0d0d12] border border-white/10 rounded-xl text-white placeholder:text-gray-500 resize-none focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50"
+              className="w-full px-4 py-3 pr-12 bg-[#04070a] border border-cyan-500/20 rounded-none text-sm text-white placeholder:text-gray-600 placeholder:font-mono placeholder:text-xs placeholder:tracking-[0.15em] resize-none focus:outline-none focus:border-cyan-400/60 focus:ring-1 focus:ring-cyan-400/40"
             />
             {isLoading ? (
               <button
                 onClick={() => abortRef.current?.abort()}
                 title="Stop generating"
-                className="absolute right-3 bottom-3 p-2 bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-400 hover:to-rose-400 rounded-lg transition-all shadow-lg shadow-red-500/20"
+                className="absolute right-3 bottom-3 p-2 bg-red-500 hover:bg-red-400 rounded-none transition-all shadow-lg shadow-red-500/20"
               >
                 <Square className="w-4 h-4 text-white fill-white" />
               </button>
@@ -2112,9 +2116,9 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               <button
                 onClick={sendMessage}
                 disabled={!input.trim() || appMode === 'demo'}
-                className="absolute right-3 bottom-3 p-2 bg-gradient-to-r from-cyan-500 to-purple-500 hover:from-cyan-400 hover:to-purple-400 disabled:from-gray-600 disabled:to-gray-600 rounded-lg transition-all shadow-lg shadow-cyan-500/20"
+                className="absolute right-3 bottom-3 p-2 bg-cyan-500 hover:bg-cyan-400 disabled:bg-gray-700 rounded-none transition-all shadow-lg shadow-cyan-500/20"
               >
-                <Send className="w-4 h-4 text-white" />
+                <Send className="w-4 h-4 text-black" />
               </button>
             )}
           </div>
