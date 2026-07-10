@@ -7,6 +7,7 @@ interface StreamCompletionOptions {
   temperature?: number;
   maxTokens?: number;
   provider?: string;
+  signal?: AbortSignal;
   onProgress?: (text: string) => void;
   onToolActivity?: (toolName: string, filePath?: string, operation?: string) => void;
 }
@@ -48,6 +49,7 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
     temperature = 0.7,
     maxTokens = 4096,
     provider,
+    signal,
     onProgress,
     onToolActivity
   } = options;
@@ -72,6 +74,7 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
 
   const response = await fetch('https://api.aiassist.net/v1/chat/completions', {
     method: 'POST',
+    signal,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,

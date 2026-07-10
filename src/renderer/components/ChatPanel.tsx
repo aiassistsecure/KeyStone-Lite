@@ -15,6 +15,7 @@ import {
   Play,
   ShieldAlert,
   TerminalSquare,
+  Square,
 } from 'lucide-react';
 import type { OpenFile } from '../pages/MainLayout';
 import { ModelSelector } from './ModelSelector';
@@ -602,14 +603,27 @@ const REMOTE_APP_TOOLS = [
   }
 ];
 
-function waitForApproval(approvalId: string): Promise<'run' | 'deny'> {
-  return new Promise((resolve) => {
+function waitForApproval(approvalId: string, signal?: AbortSignal): Promise<'run' | 'deny'> {
+  return new Promise((resolve, reject) => {
     const unsub = subscribeAgentEvents((e) => {
       if (e.type === 'approval_resolved' && e.approvalId === approvalId) {
         unsub();
         resolve(e.decision);
       }
     });
+    if (signal) {
+      const onAbort = () => {
+        unsub();
+        // Dismiss the pending approval card in the UI, then bail out.
+        publishAgentEvent({ type: 'approval_resolved', approvalId, decision: 'deny', auto: true });
+        reject(new DOMException('Stopped by user', 'AbortError'));
+      };
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
   });
 }
 
@@ -662,6 +676,7 @@ export function ChatPanel({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [mode, setMode] = useState<EditorMode>('debug');
   const [appliedMessageIds, setAppliedMessageIds] = useState<Set<string>>(new Set());
@@ -864,6 +879,18 @@ export function ChatPanel({
     publishAgentEvent({ type: 'status', status: 'working', detail: 'Assistant is thinking' });
     setInput('');
     setIsLoading(true);
+
+    // Stop button support: aborting this controller cuts the network stream,
+    // cancels pending approvals, and exits the tool loop at the next check.
+    const abortController = new AbortController();
+    abortRef.current = abortController;
+    const throwIfAborted = () => {
+      if (abortController.signal.aborted) {
+        throw new DOMException('Stopped by user', 'AbortError');
+      }
+    };
+    // Tracks streamed text so a stopped turn can keep its partial reply.
+    let partialText = '';
 
     const assistantMessageId = (Date.now() + 1).toString();
 
@@ -1075,6 +1102,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         console.log(`[${modeLabel}] Starting tool-enabled chat, tools:`, LLM_TOOLS.map(t => t.function.name));
         
         while (toolLoopCount < maxToolLoops) {
+          throwIfAborted();
           const forceFinish = toolLoopCount >= 12;
           // Context window tracking: compact older tool outputs every round,
           // and archive the oldest messages when the payload nears the
@@ -1111,6 +1139,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
             temperature,
             maxTokens,
             provider: provider || undefined,
+            signal: abortController.signal,
             onToolActivity: (toolName, filePath, operation) => {
               setStreamingTool(toolName);
               if (filePath) setStreamingFile(filePath);
@@ -1150,6 +1179,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
           });
           
           for (const toolCall of toolCalls) {
+            throwIfAborted();
             const fnName = toolCall.function.name;
             const args = JSON.parse(toolCall.function.arguments || '{}');
             let result: string;
@@ -1209,6 +1239,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               try {
                 const tavilyResponse = await fetch('https://api.aiassist.net/v1/search', {
                   method: 'POST',
+                  signal: abortController.signal,
                   headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${apiKey}`,
@@ -1255,7 +1286,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                   terminals.create(termName, (projectPath as string) || '/', 'agent');
                 const approvalId = `ap_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
                 publishAgentEvent({ type: 'status', status: 'waiting', detail: 'Waiting for command approval' });
-                const decisionPromise = waitForApproval(approvalId);
+                const decisionPromise = waitForApproval(approvalId, abortController.signal);
                 publishAgentEvent({
                   type: 'approval_request',
                   approvalId,
@@ -1286,7 +1317,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 } else {
                   const approvalId = `ap_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
                   publishAgentEvent({ type: 'status', status: 'waiting', detail: 'Waiting for approval' });
-                  const decisionPromise = waitForApproval(approvalId);
+                  const decisionPromise = waitForApproval(approvalId, abortController.signal);
                   publishAgentEvent({
                     type: 'approval_request',
                     approvalId,
@@ -1379,6 +1410,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
       
       const response = await fetch('https://api.aiassist.net/v1/chat/completions', {
         method: 'POST',
+        signal: abortController.signal,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
@@ -1424,6 +1456,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                   const parsed = JSON.parse(data);
                   const delta = parsed.choices?.[0]?.delta?.content || '';
                   accumulatedContent += delta;
+                  partialText = accumulatedContent;
 
                   // Detect surgical edit operations from streaming content
                   const editMatch = accumulatedContent.match(/<<<(EDIT|INSERT|REPLACE|DELETE|CREATE)>>>\s*\n\s*([^\n]+)/);
@@ -1482,15 +1515,33 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         });
       }
     } catch (error) {
-      const errorText = error instanceof Error ? error.message : 'Unknown error occurred';
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantMessageId
-            ? { ...m, content: `Error: ${errorText}` }
-            : m
-        )
-      );
+      const wasStopped =
+        abortController.signal.aborted ||
+        (error instanceof Error && error.name === 'AbortError');
+      if (wasStopped) {
+        // Keep whatever streamed in before the stop, and mark the turn so
+        // the model knows this reply was cut short by the user.
+        const stoppedContent = partialText
+          ? `${partialText}\n\n*[Stopped by user]*`
+          : '*[Stopped by user]*';
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessageId ? { ...m, content: stoppedContent } : m
+          )
+        );
+        persistMessage('assistant', stoppedContent);
+      } else {
+        const errorText = error instanceof Error ? error.message : 'Unknown error occurred';
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessageId
+              ? { ...m, content: `Error: ${errorText}` }
+              : m
+          )
+        );
+      }
     } finally {
+      if (abortRef.current === abortController) abortRef.current = null;
       publishAgentEvent({ type: 'status', status: 'idle' });
       setIsLoading(false);
       setStreamingFile(undefined);
@@ -2044,13 +2095,23 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               rows={3}
               className="w-full px-4 py-3 pr-12 bg-[#0d0d12] border border-white/10 rounded-xl text-white placeholder:text-gray-500 resize-none focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50"
             />
-            <button
-              onClick={sendMessage}
-              disabled={!input.trim() || isLoading || appMode === 'demo'}
-              className="absolute right-3 bottom-3 p-2 bg-gradient-to-r from-cyan-500 to-purple-500 hover:from-cyan-400 hover:to-purple-400 disabled:from-gray-600 disabled:to-gray-600 rounded-lg transition-all shadow-lg shadow-cyan-500/20"
-            >
-              <Send className="w-4 h-4 text-white" />
-            </button>
+            {isLoading ? (
+              <button
+                onClick={() => abortRef.current?.abort()}
+                title="Stop generating"
+                className="absolute right-3 bottom-3 p-2 bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-400 hover:to-rose-400 rounded-lg transition-all shadow-lg shadow-red-500/20"
+              >
+                <Square className="w-4 h-4 text-white fill-white" />
+              </button>
+            ) : (
+              <button
+                onClick={sendMessage}
+                disabled={!input.trim() || appMode === 'demo'}
+                className="absolute right-3 bottom-3 p-2 bg-gradient-to-r from-cyan-500 to-purple-500 hover:from-cyan-400 hover:to-purple-400 disabled:from-gray-600 disabled:to-gray-600 rounded-lg transition-all shadow-lg shadow-cyan-500/20"
+              >
+                <Send className="w-4 h-4 text-white" />
+              </button>
+            )}
           </div>
         </div>
       </div>
