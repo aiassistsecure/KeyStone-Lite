@@ -914,6 +914,14 @@ export function ChatPanel({
         .filter(Boolean)
         .join('\n\n');
 
+      const runToolsList = remoteEnvId
+        ? `- start_app(command): Start the app in the remote environment (user approves first)
+- stop_app(): Stop the running remote app
+- get_logs(lines?): Read recent output from the remote app`
+        : `- run_command(command, terminal?): Run a shell command in a terminal tab (user approves first). Use for builds, tests, installs — NOT for reading files (use read_file) or searching (use search_files)
+- open_terminal(name): Open a named terminal tab (e.g., one for backend, one for tests)
+- list_terminals(): List open terminal tabs`;
+
       const keystoneModeInstructions = `
 YOU ARE IN KEYSTONE (CREATIVE) MODE.
 
@@ -923,8 +931,17 @@ WORKFLOW (follow this order):
 3. PRODUCE: Generate your response with specific code suggestions, edits, or solutions
 
 TOOLS AVAILABLE:
-- read_file(path): Read any file in the project. Use relative paths like "src/main.cpp"
-- search_files(pattern, file_extension?): Search for text patterns across files
+- read_file(path): Read any file in the project. Use relative paths like "src/main.cpp". ALWAYS prefer this over shell commands like cat/grep for reading code
+- search_files(pattern, file_extension?): Search for text patterns across files. Prefer this over shell grep
+- tavily_search(query, search_depth?): Search the web for docs, APIs, best practices
+- recall_context(query): Search earlier material from this session that was trimmed or archived out of context (old tool outputs, earlier messages)
+${runToolsList}
+
+CONTEXT MANAGEMENT (how your context window works):
+- Large tool outputs get trimmed (start + end kept, middle cut) and the full version is archived
+- Older tool outputs are compacted to stubs as you work; if the conversation gets too big, the oldest messages are archived automatically
+- If you need trimmed or archived details: call recall_context, or better, re-run the tool with a narrower scope (specific file, tighter pattern)
+- Keep outputs small on purpose: read specific files instead of dumping directories, search with tight patterns
 
 IMPORTANT RULES:
 - Maximum 15 tool calls - be strategic, don't read every file
@@ -981,6 +998,9 @@ TOOLS AVAILABLE:
 - read_file(path): Read any file to understand the codebase
 - search_files(pattern): Search for patterns across the project
 - tavily_search(query): Search the web for documentation, best practices, API references
+- recall_context(query): Search earlier session material that was trimmed or archived out of context
+
+NOTE: Large tool outputs are trimmed and archived automatically. Use recall_context to retrieve archived details, or re-run a tool with a narrower scope.
 
 WORKFLOW:
 1. EXPLORE: Use tools to understand the codebase structure and purpose
