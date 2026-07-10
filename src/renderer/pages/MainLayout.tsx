@@ -54,14 +54,15 @@ export function MainLayout({ apiKey, mode = 'api', session = null, workspace = n
   const isLocalEnv = session?.envMode === 'local' && !!session.environmentId && !!projectPath;
 
   const reloadOpenFiles = async () => {
-    const refreshed = await Promise.all(
+    const refreshed = new Map<string, OpenFile>();
+    await Promise.all(
       openFiles.map(async (f) => {
         const result = await window.electron.fs.readFile(f.path);
-        if ('error' in result && result.error) return f;
-        return { ...f, content: result.content || '', isDirty: false };
+        if ('error' in result && result.error) return;
+        refreshed.set(f.path, { ...f, content: result.content || '', isDirty: false });
       })
     );
-    setOpenFiles(refreshed);
+    setOpenFiles((prev) => prev.map((f) => refreshed.get(f.path) ?? f));
   };
 
   const runEnvSync = async (direction: 'pull' | 'push') => {
