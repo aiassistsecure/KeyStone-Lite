@@ -1820,8 +1820,13 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
             {messages.length > 0 && (
               <button
                 onClick={clearChat}
-                className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-                title="Start a new chat with fresh context — this chat stays saved in your session history"
+                disabled={isLoading}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                title={
+                  isLoading
+                    ? 'Wait for the assistant to finish before starting a new chat'
+                    : 'Start a new chat with fresh context — this chat stays saved in your session history'
+                }
               >
                 <RotateCcw className="w-3 h-3" />
                 New

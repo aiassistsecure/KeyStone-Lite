@@ -342,7 +342,25 @@ export function MainLayout({ apiKey, mode = 'api', session = null, workspace = n
               apiKey={apiKey}
               mode={mode}
               session={session}
-              onNewSession={onNewSession}
+              onNewSession={
+                onNewSession
+                  ? async () => {
+                      // Starting a new session remounts the layout — save any
+                      // unsaved edits first so nothing is silently lost.
+                      const dirty = openFiles.filter((f) => f.isDirty);
+                      if (dirty.length > 0) {
+                        const ok = window.confirm(
+                          `You have unsaved changes in: ${dirty.map((f) => f.name).join(', ')}.\n\nSave them and start a new chat?`
+                        );
+                        if (!ok) return;
+                        for (const f of dirty) {
+                          await saveFile(f.path, f.content);
+                        }
+                      }
+                      onNewSession();
+                    }
+                  : undefined
+              }
               contextFiles={chatContext}
               openFiles={openFiles}
               activeFile={activeFile}
