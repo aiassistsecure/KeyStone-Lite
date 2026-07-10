@@ -108,6 +108,26 @@ export default function App() {
     }
   };
 
+  const handleNewSession = async () => {
+    if (!launch) return;
+    const old = launch.session;
+    // Start a fresh session in the same workspace. The old session (and its
+    // full transcript) stays in the session list for review or reattaching.
+    const session = await createSession(
+      launch.mode,
+      launch.workspace,
+      old.environmentName
+        ? `${old.envMode === 'remote' ? 'Remote' : 'Local'} — ${old.environmentName}`
+        : undefined,
+      {
+        ...(old.environmentId ? { environmentId: old.environmentId } : {}),
+        ...(old.environmentName ? { environmentName: old.environmentName } : {}),
+        ...(old.envMode ? { envMode: old.envMode } : {}),
+      }
+    );
+    setLaunch({ ...launch, session });
+  };
+
   const handleExitToSetup = () => {
     // Kill any running commands and drop all terminal tabs/buffers so the
     // next session starts clean instead of inheriting old terminals.
@@ -141,6 +161,7 @@ export default function App() {
           session={launch.session}
           workspace={launch.workspace}
           onExit={handleExitToSetup}
+          onNewSession={handleNewSession}
         />
       )}
     </AnimatePresence>

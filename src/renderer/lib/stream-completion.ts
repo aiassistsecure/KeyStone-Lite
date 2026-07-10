@@ -54,10 +54,12 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
 
   // Claude/Anthropic frontier models only accept temperature 1.0 — enforce it
   // here as a safety net for every caller. Anthropic also rejects max_tokens
-  // above the model's output ceiling (64k for Sonnet), so clamp it too.
+  // above the model's output ceiling (64k for Sonnet, 32k for Opus), so
+  // clamp it too.
   const isClaude = /claude/i.test(model) || provider === 'anthropic';
   const effectiveTemperature = isClaude ? 1.0 : temperature;
-  const effectiveMaxTokens = isClaude ? Math.min(maxTokens, 64000) : maxTokens;
+  const claudeCeiling = /opus/i.test(model) ? 32000 : 64000;
+  const effectiveMaxTokens = isClaude ? Math.min(maxTokens, claudeCeiling) : maxTokens;
 
   // Drop messages with no usable content — assistant turns with an empty
   // string (from failed replies) make Anthropic reject the request with 400.

@@ -38,9 +38,10 @@ interface MainLayoutProps {
   session?: SessionInfo | null;
   workspace?: WorkspaceInfo | null;
   onExit?: () => void;
+  onNewSession?: () => void;
 }
 
-export function MainLayout({ apiKey, mode = 'api', session = null, workspace = null, onExit }: MainLayoutProps) {
+export function MainLayout({ apiKey, mode = 'api', session = null, workspace = null, onExit, onNewSession }: MainLayoutProps) {
   const [projectPath, setProjectPath] = useState<string | null>(workspace?.path || null);
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
@@ -341,6 +342,7 @@ export function MainLayout({ apiKey, mode = 'api', session = null, workspace = n
               apiKey={apiKey}
               mode={mode}
               session={session}
+              onNewSession={onNewSession}
               contextFiles={chatContext}
               openFiles={openFiles}
               activeFile={activeFile}

@@ -485,7 +485,10 @@ function compactOldToolResults(msgs: ConvMsg[], archive: ArchiveEntry[], keepRec
     const i = toolIdxs[k];
     const content = msgs[i].content || '';
     if (content.length > 1200 && !content.startsWith('[archived')) {
-      archive.push({ label: 'tool output', content });
+      // Results trimmed at push time were already archived in full there —
+      // don't archive the trimmed copy again (it would dilute search results).
+      const alreadyArchived = content.includes('The full output is archived');
+      if (!alreadyArchived) archive.push({ label: 'tool output', content });
       msgs[i] = {
         ...msgs[i],
         content: `[archived tool output — ${content.length.toLocaleString()} chars, began with: "${content.slice(0, 140).replace(/\s+/g, ' ')}...". Use recall_context to search it, or re-run the tool for fresh data.]`,
@@ -623,6 +626,7 @@ interface ChatPanelProps {
   onClearPendingMessage: () => void;
   onRemoveFromContext: (path: string) => void;
   onApplyEdit: (path: string, content: string) => void;
+  onNewSession?: () => void;
 }
 
 interface ApprovalInfo {
@@ -653,6 +657,7 @@ export function ChatPanel({
   onClearPendingMessage,
   onRemoveFromContext,
   onApplyEdit,
+  onNewSession,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -885,8 +890,9 @@ export function ChatPanel({
       // get the new 100k default without having to touch settings.
       const rawMaxTokens = !storedMaxTokens || storedMaxTokens === 8192 ? 102400 : storedMaxTokens;
       // Anthropic rejects max_tokens above the model's output ceiling (64k
-      // for Claude Sonnet) with a 400 — clamp instead of failing the request.
-      const maxTokens = isClaude ? Math.min(rawMaxTokens, 64000) : rawMaxTokens;
+      // for Sonnet, 32k for Opus) with a 400 — clamp instead of failing.
+      const claudeCeiling = /opus/i.test(model || '') ? 32000 : 64000;
+      const maxTokens = isClaude ? Math.min(rawMaxTokens, claudeCeiling) : rawMaxTokens;
 
       const filesToInclude = new Set(contextFiles);
       if (activeFile) filesToInclude.add(activeFile);
@@ -1325,8 +1331,10 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
             });
             
             const storedResult = trimToolResult(fnName, result);
-            if (storedResult !== result) {
-              // Full output goes to the archive so recall_context can find it.
+            if (storedResult !== result && fnName !== 'recall_context') {
+              // Full output goes to the archive so recall_context can find
+              // it. recall_context output is already derived from the
+              // archive — re-archiving it would create recursive noise.
               contextArchiveRef.current.push({ label: `${fnName} output`, content: result });
             }
             conversationMessages.push({
@@ -1478,6 +1486,12 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
   };
 
   const clearChat = () => {
+    // Roll a fresh session so the model gets clean context, while the old
+    // chat stays persisted in the session list for review or reattaching.
+    if (onNewSession) {
+      onNewSession();
+      return;
+    }
     setMessages([]);
     setInput('');
   };
@@ -1807,7 +1821,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               <button
                 onClick={clearChat}
                 className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-                title="New chat"
+                title="Start a new chat with fresh context — this chat stays saved in your session history"
               >
                 <RotateCcw className="w-3 h-3" />
                 New
