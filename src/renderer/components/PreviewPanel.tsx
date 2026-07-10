@@ -115,11 +115,21 @@ export function PreviewPanel({ projectPath }: PreviewPanelProps) {
     return p > 0 && p <= 65535 ? p : profile?.defaultPort ?? 3000;
   })();
 
+  // Remote environments read files over HTTP, but the terminal is always
+  // local — starting a server there would run in the wrong directory.
+  const isLocalWorkspace = Boolean(projectPath && !projectPath.startsWith('/env/'));
+
   const startServer = () => {
     if (!profile || !projectPath || starting) return;
-    setStarting(true);
     const t = terminals.create('dev server', projectPath, 'user');
-    terminals.run(t.id, profile.buildCommand(effectivePort), 'user').catch(() => setStarting(false));
+    if (terminals.isBusy(t.id)) {
+      setStarting(true);
+      return;
+    }
+    setStarting(true);
+    // run() resolves whenever the process exits — success or failure —
+    // so any resolution means we're no longer "starting".
+    terminals.run(t.id, profile.buildCommand(effectivePort), 'user').then(() => setStarting(false));
   };
 
   useEffect(() => {
@@ -206,7 +216,7 @@ export function PreviewPanel({ projectPath }: PreviewPanelProps) {
           </button>
         </div>
       </div>
-      {profile && !showingLive && (
+      {profile && !showingLive && isLocalWorkspace && (
         <div className="flex items-center gap-2 border-b border-white/10 bg-black/30 px-3 py-1.5 text-xs flex-shrink-0">
           <span className="rounded bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-medium text-cyan-300" data-testid="text-project-type">
             {profile.label}
