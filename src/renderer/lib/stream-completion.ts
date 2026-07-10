@@ -53,10 +53,20 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
   } = options;
 
   // Claude/Anthropic frontier models only accept temperature 1.0 — enforce it
-  // here as a safety net for every caller.
-  const effectiveTemperature = /claude/i.test(model) || provider === 'anthropic'
-    ? 1.0
-    : temperature;
+  // here as a safety net for every caller. Anthropic also rejects max_tokens
+  // above the model's output ceiling (64k for Sonnet), so clamp it too.
+  const isClaude = /claude/i.test(model) || provider === 'anthropic';
+  const effectiveTemperature = isClaude ? 1.0 : temperature;
+  const effectiveMaxTokens = isClaude ? Math.min(maxTokens, 64000) : maxTokens;
+
+  // Drop messages with no usable content — assistant turns with an empty
+  // string (from failed replies) make Anthropic reject the request with 400.
+  const sanitizedMessages = messages.filter(
+    (m) =>
+      (Array.isArray(m.tool_calls) && m.tool_calls.length > 0) ||
+      m.tool_call_id ||
+      (typeof m.content === 'string' && m.content.trim().length > 0)
+  );
 
   const response = await fetch('https://api.aiassist.net/v1/chat/completions', {
     method: 'POST',
@@ -67,12 +77,12 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
     },
     body: JSON.stringify({
       model,
-      messages,
+      messages: sanitizedMessages,
       tools,
       tool_choice,
       temperature: effectiveTemperature,
-      max_tokens: maxTokens,
-      max_completion_tokens: maxTokens,
+      max_tokens: effectiveMaxTokens,
+      max_completion_tokens: effectiveMaxTokens,
       stream: true,
     }),
   });

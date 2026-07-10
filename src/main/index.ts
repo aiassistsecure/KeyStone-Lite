@@ -382,6 +382,9 @@ ipcMain.handle('terminal:exec', (event, id: string, command: string, cwd?: strin
       cwd: workDir,
       env: termEnv(),
       windowsHide: true,
+      // Own process group on POSIX so killing takes down grandchildren
+      // (e.g. a dev server spawned by the shell), not just the shell itself.
+      detached: process.platform !== 'win32',
     });
     child.stdout?.on('data', (c: Buffer) => push(c.toString('utf8').replace(/\r?\n/g, '\r\n')));
     child.stderr?.on('data', (c: Buffer) => push(c.toString('utf8').replace(/\r?\n/g, '\r\n')));
@@ -390,7 +393,19 @@ ipcMain.handle('terminal:exec', (event, id: string, command: string, cwd?: strin
       push(`\r\n${err.message}\r\n`);
       finish(1);
     });
-    runningProcs.set(id, { kill: () => child.kill('SIGTERM') });
+    runningProcs.set(id, {
+      kill: () => {
+        if (process.platform !== 'win32' && child.pid) {
+          try {
+            process.kill(-child.pid, 'SIGTERM');
+            return;
+          } catch {
+            // Process group already gone or not available — fall through.
+          }
+        }
+        child.kill('SIGTERM');
+      },
+    });
   };
 
   try {

@@ -425,8 +425,126 @@ const LLM_TOOLS = [
         properties: {}
       }
     }
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'recall_context',
+      description: 'Search earlier material from this session that was archived to keep the context window small (large tool outputs, older messages). Use this when you need details that were trimmed or archived earlier. For file contents or command output, prefer re-running the original tool for fresh data.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Keywords to search the archived context for (e.g., a function name, file path, or error text)'
+          }
+        },
+        required: ['query']
+      }
+    }
   }
 ];
+
+// ---- Context window management ----------------------------------------
+// Tool outputs are trimmed before entering the conversation, old tool
+// results are compacted as the loop progresses, and when the payload
+// approaches the model's input window the older messages are archived.
+// The model can search the archive with the recall_context tool.
+
+type ConvMsg = { role: string; content?: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string };
+type ArchiveEntry = { label: string; content: string };
+
+const MAX_TOOL_RESULT_CHARS = 6000;
+// ~4 chars per token; leaves headroom for the system prompt and the reply.
+const CONTEXT_CHAR_BUDGET = 360_000;
+const KEEP_RECENT_MESSAGES = 8;
+
+const TOOL_TRIM_HINTS: Record<string, string> = {
+  run_command: 'narrow the command (more specific grep pattern, add "| head -50", or target one file)',
+  read_file: 'read a smaller file or use search_files to locate the exact lines you need',
+  search_files: 'use a more specific pattern or limit by file extension',
+  get_logs: 'request fewer lines',
+  tavily_search: 'use a more specific query',
+};
+
+function trimToolResult(fnName: string, result: string): string {
+  if (result.length <= MAX_TOOL_RESULT_CHARS) return result;
+  const head = result.slice(0, 4200);
+  const tail = result.slice(-1200);
+  const hint = TOOL_TRIM_HINTS[fnName] || 're-run the tool with a narrower scope';
+  return `${head}\n\n[... ${(result.length - head.length - tail.length).toLocaleString()} characters trimmed ...]\n\n${tail}\n\n(Note: this output was too large for context and was trimmed. The full output is archived — search it with recall_context, or ${hint}.)`;
+}
+
+function compactOldToolResults(msgs: ConvMsg[], archive: ArchiveEntry[], keepRecent = 3): void {
+  const toolIdxs: number[] = [];
+  msgs.forEach((m, i) => {
+    if (m.role === 'tool') toolIdxs.push(i);
+  });
+  const cutoff = toolIdxs.length - keepRecent;
+  for (let k = 0; k < cutoff; k++) {
+    const i = toolIdxs[k];
+    const content = msgs[i].content || '';
+    if (content.length > 1200 && !content.startsWith('[archived')) {
+      archive.push({ label: 'tool output', content });
+      msgs[i] = {
+        ...msgs[i],
+        content: `[archived tool output — ${content.length.toLocaleString()} chars, began with: "${content.slice(0, 140).replace(/\s+/g, ' ')}...". Use recall_context to search it, or re-run the tool for fresh data.]`,
+      };
+    }
+  }
+}
+
+function archiveOverflow(msgs: ConvMsg[], archive: ArchiveEntry[]): boolean {
+  if (JSON.stringify(msgs).length <= CONTEXT_CHAR_BUDGET) return false;
+  // Keep the system prompt (index 0) and the most recent messages. Never
+  // start the kept window on a tool message — its assistant tool_call
+  // partner must stay with it.
+  let start = Math.max(1, msgs.length - KEEP_RECENT_MESSAGES);
+  while (start > 1 && msgs[start].role === 'tool') start--;
+  if (start <= 1) return false;
+  const removed = msgs.splice(1, start - 1);
+  for (const m of removed) {
+    if (m.content && m.content.length > 0) {
+      archive.push({ label: `${m.role} message`, content: m.content });
+    }
+  }
+  msgs.splice(1, 0, {
+    role: 'system',
+    content: `[Context management: ${removed.length} earlier messages were archived to stay within the model's input window. Nothing is lost — use the recall_context tool to search the archived material when needed.]`,
+  });
+  return true;
+}
+
+function searchArchive(archive: ArchiveEntry[], query: string): string {
+  if (archive.length === 0) {
+    return 'The context archive is empty — nothing has been archived yet this session.';
+  }
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const scored = archive
+    .map((entry, i) => {
+      const lower = entry.content.toLowerCase();
+      const score = terms.reduce((s, t) => s + (lower.includes(t) ? 1 : 0), 0);
+      return { entry, i, score };
+    })
+    .filter((e) => e.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+  if (scored.length === 0) {
+    return `No archived content matched "${query}". The archive holds ${archive.length} entries. Try different keywords, or re-run the original tool for fresh data.`;
+  }
+  return (
+    `Found ${scored.length} archived snippet(s):\n\n` +
+    scored
+      .map(({ entry, i }) => {
+        const lower = entry.content.toLowerCase();
+        const firstHit = terms.map((t) => lower.indexOf(t)).filter((x) => x >= 0).sort((a, b) => a - b)[0] || 0;
+        const from = Math.max(0, firstHit - 400);
+        const snippet = entry.content.slice(from, from + 2400);
+        return `--- archive #${i + 1} (${entry.label}, ${entry.content.length.toLocaleString()} chars total) ---\n${from > 0 ? '...' : ''}${snippet}${from + 2400 < entry.content.length ? '...' : ''}`;
+      })
+      .join('\n\n')
+  );
+}
 
 // Terminal tool names that do not apply when working inside a remote Keystone
 // environment (the terminal panel itself stays local for the user, but the
@@ -556,6 +674,7 @@ export function ChatPanel({
   // local terminal tools. The user's terminal panel always stays local.
   const remoteEnvId = session?.envMode === 'remote' ? session.environmentId : undefined;
   const keystoneBaseUrlRef = useRef(DEFAULT_KEYSTONE_BASE_URL);
+  const contextArchiveRef = useRef<ArchiveEntry[]>([]);
   useEffect(() => {
     if (!remoteEnvId) return;
     getKeystoneBaseUrl().then((url) => {
@@ -757,15 +876,17 @@ export function ChatPanel({
       const model = await window.electron.store.get('defaultModel');
       const provider = await window.electron.store.get('defaultProvider');
       const storedTemperature = await window.electron.store.get('temperature') || 0.7;
+      const isClaude = /claude/i.test(model || '') || provider === 'anthropic';
       // Frontier models (Claude/Anthropic) require temperature 1.0 — auto-set
       // it so requests comply with the provider regardless of the saved setting.
-      const temperature = /claude/i.test(model || '') || provider === 'anthropic'
-        ? 1.0
-        : storedTemperature;
+      const temperature = isClaude ? 1.0 : storedTemperature;
       const storedMaxTokens = await window.electron.store.get('maxTokens');
       // 8192 was the old default cap — treat it as unset so existing users
       // get the new 100k default without having to touch settings.
-      const maxTokens = !storedMaxTokens || storedMaxTokens === 8192 ? 102400 : storedMaxTokens;
+      const rawMaxTokens = !storedMaxTokens || storedMaxTokens === 8192 ? 102400 : storedMaxTokens;
+      // Anthropic rejects max_tokens above the model's output ceiling (64k
+      // for Claude Sonnet) with a 400 — clamp instead of failing the request.
+      const maxTokens = isClaude ? Math.min(rawMaxTokens, 64000) : rawMaxTokens;
 
       const filesToInclude = new Set(contextFiles);
       if (activeFile) filesToInclude.add(activeFile);
@@ -909,9 +1030,14 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
 
       console.log('[Chat] System prompt length:', systemPrompt.length, 'Context files:', contextFiles.length);
       
-      const conversationMessages: Array<{ role: string; content?: string; tool_calls?: unknown[]; tool_call_id?: string; name?: string }> = [
+      const conversationMessages: ConvMsg[] = [
         { role: 'system', content: systemPrompt },
-        ...messages.map((m) => ({ role: m.role, content: m.content })),
+        // Only real user/assistant turns with content — empty assistant
+        // messages (from failed replies) and approval cards make providers
+        // like Anthropic reject the whole request with a 400.
+        ...messages
+          .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content && m.content.trim())
+          .map((m) => ({ role: m.role, content: m.content })),
         { role: 'user', content: input.trim() },
       ];
       
@@ -924,6 +1050,14 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         
         while (toolLoopCount < maxToolLoops) {
           const forceFinish = toolLoopCount >= 12;
+          // Context window tracking: compact older tool outputs every round,
+          // and archive the oldest messages when the payload nears the
+          // model's input window. The model can recall archived material
+          // with the recall_context tool.
+          compactOldToolResults(conversationMessages, contextArchiveRef.current);
+          if (archiveOverflow(conversationMessages, contextArchiveRef.current)) {
+            console.log('[Context] Overflow archived; archive entries:', contextArchiveRef.current.length);
+          }
           const payloadSize = JSON.stringify(conversationMessages).length;
           console.log('[Keystone] Loop', toolLoopCount + 1, 'messages:', conversationMessages.length, 'payload size:', Math.round(payloadSize / 1024), 'KB', forceFinish ? '(forcing finish)' : '');
           console.log('[Keystone] Last 2 messages:', JSON.stringify(conversationMessages.slice(-2)).slice(0, 1000));
@@ -998,6 +1132,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               if (fnName === 'read_file') return `🔍 Reading ${args.path}...`;
               if (fnName === 'search_files') return `🔎 Searching for "${args.pattern}"...`;
               if (fnName === 'tavily_search') return `🌐 Researching: ${args.query}...`;
+              if (fnName === 'recall_context') return `Recalling archived context: ${args.query}...`;
               if (fnName === 'run_command') return `Waiting to run: ${args.command}`;
               if (fnName === 'open_terminal') return `Opening terminal "${args.name}"...`;
               if (fnName === 'list_terminals') return `Checking open terminals...`;
@@ -1159,6 +1294,11 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                   }
                 }
               }
+            } else if (fnName === 'recall_context') {
+              const query = String(args.query || '').trim();
+              result = query
+                ? searchArchive(contextArchiveRef.current, query)
+                : 'Error: recall_context needs a query.';
             } else if (fnName === 'get_logs') {
               if (!remoteEnvId) {
                 result = 'Error: no remote environment is attached to this session.';
@@ -1184,10 +1324,15 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               ok: !result.startsWith('Error'),
             });
             
+            const storedResult = trimToolResult(fnName, result);
+            if (storedResult !== result) {
+              // Full output goes to the archive so recall_context can find it.
+              contextArchiveRef.current.push({ label: `${fnName} output`, content: result });
+            }
             conversationMessages.push({
               role: 'tool',
               tool_call_id: toolCall.id,
-              content: result,
+              content: storedResult,
             });
             
             console.log(`[Tool] ${fnName}:`, args, '→', result.slice(0, 200));

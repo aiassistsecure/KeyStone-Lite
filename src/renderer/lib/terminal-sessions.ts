@@ -21,8 +21,8 @@ const MAX_CAPTURE = 16_000;
 
 const ANSI_RE = /\x1b\[[0-9;?]*[a-zA-Z]/g;
 const LOCAL_URL_RE = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})/gi;
-const LISTEN_RE = /listening\s+(?:on\s+)?(?:port\s+)?:?\s*(\d{4,5})/gi;
-const ON_PORT_RE = /on\s+port\s+:?\s*(\d{4,5})/gi;
+const LISTEN_RE = /listening\s+(?:on\s+)?(?:port\s+)?:?\s*(\d{2,5})/gi;
+const ON_PORT_RE = /on\s+port\s+:?\s*(\d{2,5})/gi;
 
 class TerminalManager {
   private sessions: TerminalSession[] = [];
