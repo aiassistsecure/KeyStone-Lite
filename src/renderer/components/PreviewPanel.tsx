@@ -267,6 +267,13 @@ export function PreviewPanel({ projectPath }: PreviewPanelProps) {
           <div className="text-xs">
             No <span className="font-mono text-gray-500">index.html</span> in this workspace yet
           </div>
+          {projectPath && !profile && (
+            <div className="text-[10px] text-gray-700" data-testid="text-scan-result">
+              Scanned for <span className="font-mono">package.json</span> ·{' '}
+              <span className="font-mono">manage.py</span> ·{' '}
+              <span className="font-mono">requirements.txt</span> — no project type detected
+            </div>
+          )}
           <div className="text-[10px] text-gray-700">
             Start a dev server in the terminal and the preview will pick it up automatically
           </div>
