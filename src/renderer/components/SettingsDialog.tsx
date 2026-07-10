@@ -28,7 +28,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [tabSize, setTabSize] = useState(2);
   const [wordWrap, setWordWrap] = useState(true);
   const [temperature, setTemperature] = useState(0.7);
-  const [maxTokens, setMaxTokens] = useState(8192);
+  const [maxTokens, setMaxTokens] = useState(102400);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -47,7 +47,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     setTabSize(settings.tabSize || 2);
     setWordWrap(settings.wordWrap ?? true);
     setTemperature(settings.temperature || 0.7);
-    setMaxTokens(settings.maxTokens || 8192);
+    // 8192 was the old default — upgrade it to the new 100k default.
+    setMaxTokens(!settings.maxTokens || settings.maxTokens === 8192 ? 102400 : settings.maxTokens);
   };
 
   const saveSettings = async () => {
@@ -208,7 +209,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                       <input
                         type="range"
                         min="1024"
-                        max="32768"
+                        max="131072"
                         step="1024"
                         value={maxTokens}
                         onChange={(e) => setMaxTokens(parseInt(e.target.value))}

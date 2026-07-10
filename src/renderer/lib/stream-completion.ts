@@ -52,6 +52,12 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
     onToolActivity
   } = options;
 
+  // Claude/Anthropic frontier models only accept temperature 1.0 — enforce it
+  // here as a safety net for every caller.
+  const effectiveTemperature = /claude/i.test(model) || provider === 'anthropic'
+    ? 1.0
+    : temperature;
+
   const response = await fetch('https://api.aiassist.net/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -64,7 +70,7 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
       messages,
       tools,
       tool_choice,
-      temperature,
+      temperature: effectiveTemperature,
       max_tokens: maxTokens,
       max_completion_tokens: maxTokens,
       stream: true,

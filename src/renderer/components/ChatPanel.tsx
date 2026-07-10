@@ -756,8 +756,16 @@ export function ChatPanel({
     try {
       const model = await window.electron.store.get('defaultModel');
       const provider = await window.electron.store.get('defaultProvider');
-      const temperature = await window.electron.store.get('temperature') || 0.7;
-      const maxTokens = await window.electron.store.get('maxTokens') || 8192;
+      const storedTemperature = await window.electron.store.get('temperature') || 0.7;
+      // Frontier models (Claude/Anthropic) require temperature 1.0 — auto-set
+      // it so requests comply with the provider regardless of the saved setting.
+      const temperature = /claude/i.test(model || '') || provider === 'anthropic'
+        ? 1.0
+        : storedTemperature;
+      const storedMaxTokens = await window.electron.store.get('maxTokens');
+      // 8192 was the old default cap — treat it as unset so existing users
+      // get the new 100k default without having to touch settings.
+      const maxTokens = !storedMaxTokens || storedMaxTokens === 8192 ? 102400 : storedMaxTokens;
 
       const filesToInclude = new Set(contextFiles);
       if (activeFile) filesToInclude.add(activeFile);

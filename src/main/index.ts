@@ -376,36 +376,49 @@ ipcMain.handle('terminal:exec', (event, id: string, command: string, cwd?: strin
     if (!wc.isDestroyed()) wc.send('terminal:exit', id, code);
   };
 
+  const runWithChildProcess = () => {
+    const child = spawn(command, {
+      shell: true,
+      cwd: workDir,
+      env: termEnv(),
+      windowsHide: true,
+    });
+    child.stdout?.on('data', (c: Buffer) => push(c.toString('utf8').replace(/\r?\n/g, '\r\n')));
+    child.stderr?.on('data', (c: Buffer) => push(c.toString('utf8').replace(/\r?\n/g, '\r\n')));
+    child.on('close', (code) => finish(code));
+    child.on('error', (err) => {
+      push(`\r\n${err.message}\r\n`);
+      finish(1);
+    });
+    runningProcs.set(id, { kill: () => child.kill('SIGTERM') });
+  };
+
   try {
     if (ptyModule) {
-      const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash';
-      const args = process.platform === 'win32' ? ['-Command', command] : ['-lc', command];
-      const p = ptyModule.spawn(shell, args, {
-        name: 'xterm-256color',
-        cols: 120,
-        rows: 30,
-        cwd: workDir,
-        env: termEnv(),
-      });
-      p.onData((data: string) => push(data));
-      p.onExit(({ exitCode }: { exitCode: number }) => finish(exitCode));
-      runningProcs.set(id, { kill: () => p.kill() });
-    } else {
-      const child = spawn(command, {
-        shell: true,
-        cwd: workDir,
-        env: termEnv(),
-        windowsHide: true,
-      });
-      child.stdout?.on('data', (c: Buffer) => push(c.toString('utf8').replace(/\r?\n/g, '\r\n')));
-      child.stderr?.on('data', (c: Buffer) => push(c.toString('utf8').replace(/\r?\n/g, '\r\n')));
-      child.on('close', (code) => finish(code));
-      child.on('error', (err) => {
-        push(`\r\n${err.message}\r\n`);
-        finish(1);
-      });
-      runningProcs.set(id, { kill: () => child.kill('SIGTERM') });
+      try {
+        const shell = process.platform === 'win32' ? 'powershell.exe' : process.env.SHELL || '/bin/bash';
+        const args = process.platform === 'win32' ? ['-Command', command] : ['-lc', command];
+        const p = ptyModule.spawn(shell, args, {
+          name: 'xterm-256color',
+          cols: 120,
+          rows: 30,
+          cwd: workDir,
+          env: termEnv(),
+        });
+        p.onData((data: string) => push(data));
+        p.onExit(({ exitCode }: { exitCode: number }) => finish(exitCode));
+        runningProcs.set(id, { kill: () => p.kill() });
+        return { started: true };
+      } catch (ptyError) {
+        // node-pty is present but broken (e.g. "posix_spawnp failed" when its
+        // spawn-helper binary is unsigned or lost its exec bit in a packaged
+        // build). Disable it for the rest of this run and fall back to the
+        // plain child_process engine, which needs no native helper.
+        console.error('[terminal] node-pty spawn failed, falling back to child_process:', ptyError);
+        ptyModule = null;
+      }
     }
+    runWithChildProcess();
     return { started: true };
   } catch (error) {
     runningProcs.delete(id);

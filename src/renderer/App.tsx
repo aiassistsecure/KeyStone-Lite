@@ -6,6 +6,7 @@ import { DEMO_ROOT, swapToMemoryBridge, restoreRealBridge } from './lib/browser-
 import { swapToRemoteBridge, restoreFromRemoteBridge, envVirtualRoot } from './lib/remote-bridge';
 import { KeystoneClient, getKeystoneBaseUrl } from './lib/keystone-api';
 import { createSession, createWorkspace, getWorkspace, setActiveSession, touchSession } from './lib/sessions';
+import { terminals } from './lib/terminal-sessions';
 import type { SessionInfo, WorkspaceInfo } from './types/electron';
 
 interface Launch {
@@ -108,6 +109,9 @@ export default function App() {
   };
 
   const handleExitToSetup = () => {
+    // Kill any running commands and drop all terminal tabs/buffers so the
+    // next session starts clean instead of inheriting old terminals.
+    terminals.reset();
     restoreFromRemoteBridge();
     restoreRealBridge();
     setLaunch(null);
