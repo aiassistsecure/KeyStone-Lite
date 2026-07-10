@@ -124,7 +124,16 @@ export function StatusBar({ mode, session, workspace, onExit, onPull, onPush, sy
         <Database className="w-3 h-3" /> NEDB
       </span>
 
-      {onExit && (
+      {onExit && mode === 'demo' ? (
+        <button
+          onClick={onExit}
+          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full font-semibold text-purple-100 bg-purple-500/25 border border-purple-400/60 shadow-[0_0_10px_rgba(168,85,247,0.55)] animate-pulse hover:animate-none hover:bg-purple-500/40 hover:text-white hover:shadow-[0_0_16px_rgba(168,85,247,0.8)] transition-all"
+          title="Leave the demo and set up your real workspace"
+          data-testid="button-exit-session"
+        >
+          <LogOut className="w-3 h-3" /> Exit Demo
+        </button>
+      ) : onExit ? (
         <button
           onClick={onExit}
           className="flex items-center gap-1 text-gray-500 hover:text-red-400 transition-colors"
@@ -133,7 +142,7 @@ export function StatusBar({ mode, session, workspace, onExit, onPull, onPush, sy
         >
           <LogOut className="w-3 h-3" /> Exit
         </button>
-      )}
+      ) : null}
     </div>
   );
 }
