@@ -130,9 +130,13 @@ console.log('Aurora landing ready');
 
 let activeStop: (() => void) | null = null;
 
+// Master pacing control for the demo. 1 = original speed; higher = slower.
+// Applied to every beat between scenes via sleep().
+const DEMO_PACE = 2;
+
 function sleep(ms: number, cancelled: () => boolean): Promise<void> {
   return new Promise((resolve) => {
-    const t = setTimeout(resolve, ms);
+    const t = setTimeout(resolve, ms * DEMO_PACE);
     if (cancelled()) {
       clearTimeout(t);
       resolve();
@@ -145,11 +149,25 @@ async function streamChat(msgId: string, text: string, cancelled: () => boolean)
   for (const w of words) {
     if (cancelled()) return;
     publish({ type: 'chat_delta', msgId, delta: w });
-    await sleep(18 + Math.random() * 30, cancelled);
+    // Reading pace: ~55-95ms per word, with a longer breath at sentence ends
+    // and paragraph breaks so the message can actually be read as it lands.
+    let delay = 55 + Math.random() * 40;
+    if (/[.!?:]\s*$/.test(w)) delay += 260;
+    if (w.includes('\n\n')) delay += 500;
+    else if (w.includes('\n')) delay += 220;
+    await new Promise<void>((resolve) => {
+      const t = setTimeout(resolve, delay);
+      if (cancelled()) {
+        clearTimeout(t);
+        resolve();
+      }
+    });
   }
   publish({ type: 'chat_done', msgId });
   const completion = Math.round(text.length / 4);
   publish({ type: 'tokens', prompt: Math.round(completion * 1.6), completion, estimated: true });
+  // Let the finished message sit for a moment before the next thing happens.
+  await sleep(600, cancelled);
 }
 
 function waitForApproval(approvalId: string, cancelled: () => boolean): Promise<'run' | 'deny'> {
