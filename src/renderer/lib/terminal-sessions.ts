@@ -129,6 +129,20 @@ class TerminalManager {
     return this.sessions[0];
   }
 
+  // When the open project changes, point idle terminals at the new folder.
+  // Terminals with a running process keep their cwd — killing or confusing
+  // a live dev server mid-run would be worse than a stale directory.
+  retarget(newCwd: string): void {
+    let changed = false;
+    this.sessions = this.sessions.map((s) => {
+      if (s.cwd === newCwd || this.isBusy(s.id)) return s;
+      changed = true;
+      this.appendOutput(s.id, `\x1b[90mworkspace changed · cwd → ${newCwd}\x1b[0m\r\n`);
+      return { ...s, cwd: newCwd };
+    });
+    if (changed) this.notify();
+  }
+
   appendOutput(sessionId: string, chunk: string): void {
     const prev = this.buffers.get(sessionId) || '';
     this.buffers.set(sessionId, (prev + chunk).slice(-200_000));

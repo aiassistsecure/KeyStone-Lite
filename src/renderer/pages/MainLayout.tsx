@@ -16,6 +16,7 @@ import { MetricsPanel } from '../components/MetricsPanel';
 import { StatusBar } from '../components/StatusBar';
 import { startDemo, stopDemo } from '../lib/demo-adapter';
 import { subscribe } from '../lib/agent-events';
+import { terminals } from '../lib/terminal-sessions';
 import { KeystoneClient, getKeystoneBaseUrl } from '../lib/keystone-api';
 import { pullEnvironment, pushEnvironment } from '../lib/env-sync';
 import { TerminalSquare, Eye, Activity } from 'lucide-react';
@@ -51,6 +52,16 @@ export function MainLayout({ apiKey, mode = 'api', session = null, workspace = n
   const [centerView, setCenterView] = useState<CenterView>('code');
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
+  // Terminals are a global singleton that outlives project switches — without
+  // this, opening another folder leaves every terminal in the old directory.
+  // retarget() is idempotent (skips matching cwds and busy sessions), so it's
+  // safe to call on every local path change. Remote env paths (/env/...) are
+  // virtual, so local terminals stay put for those.
+  useEffect(() => {
+    if (projectPath && !projectPath.startsWith('/env/')) {
+      terminals.retarget(projectPath);
+    }
+  }, [projectPath]);
 
   const isLocalEnv = session?.envMode === 'local' && !!session.environmentId && !!projectPath;
 
