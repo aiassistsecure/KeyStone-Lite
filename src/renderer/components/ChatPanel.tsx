@@ -1844,7 +1844,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
             </span>
             <span className="font-mono text-xs font-semibold tracking-[0.25em] text-cyan-300">AI LINK</span>
             {contextFiles.length > 0 && (
-              <span className="flex items-center gap-1 px-2 py-0.5 bg-cyan-500/10 border border-cyan-500/30 rounded-none font-mono text-[10px] tracking-wider text-cyan-400">
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-cyan-500/10 border border-cyan-500/30 rounded-none font-mono text-[11px] tracking-wider text-cyan-400">
                 <Paperclip className="w-3 h-3" />
                 CTX {String(contextFiles.length).padStart(2, '0')}
               </span>
@@ -1855,7 +1855,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               <div className="flex bg-black/60 rounded-none p-0.5 border border-cyan-500/20">
                 <button
                   onClick={() => setMode('debug')}
-                  className={`px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] rounded-none transition-all duration-200 ${
+                  className={`px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.15em] rounded-none transition-all duration-200 ${
                     mode === 'debug'
                       ? 'bg-cyan-500/15 text-cyan-300 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.4)]'
                       : 'text-gray-500 hover:text-gray-300'
@@ -1866,7 +1866,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 </button>
                 <button
                   onClick={() => setMode('focus')}
-                  className={`px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] rounded-none transition-all duration-200 ${
+                  className={`px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.15em] rounded-none transition-all duration-200 ${
                     mode === 'focus'
                       ? 'bg-purple-500/15 text-purple-300 shadow-[inset_0_0_0_1px_rgba(192,132,252,0.4)]'
                       : 'text-gray-500 hover:text-gray-300'
@@ -1877,7 +1877,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 </button>
                 <button
                   onClick={() => setMode('keystone')}
-                  className={`px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.15em] rounded-none transition-all duration-200 flex items-center gap-1 ${
+                  className={`px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.15em] rounded-none transition-all duration-200 flex items-center gap-1 ${
                     mode === 'keystone'
                       ? 'bg-amber-500/15 text-amber-300 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.45)]'
                       : 'text-gray-500 hover:text-gray-300'
@@ -1893,7 +1893,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               <button
                 onClick={clearChat}
                 disabled={isLoading}
-                className="flex items-center gap-1 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-gray-400 hover:text-white hover:bg-white/10 rounded-none transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                className="flex items-center gap-1 px-2 py-1 font-mono text-[11px] uppercase tracking-[0.15em] text-gray-400 hover:text-white hover:bg-white/10 rounded-none transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
                 title={
                   isLoading
                     ? 'Wait for the assistant to finish before starting a new chat'
@@ -2053,7 +2053,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 {message.role === 'assistant' && (
                   <button
                     onClick={() => copyToClipboard(message.content, message.id)}
-                    className="mt-2 flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-gray-500 hover:text-white"
+                    className="mt-2 flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.1em] text-gray-500 hover:text-white"
                   >
                     {copiedId === message.id ? (
                       <>
