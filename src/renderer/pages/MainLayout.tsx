@@ -103,8 +103,11 @@ export function MainLayout({ apiKey, mode = 'api', session = null, workspace = n
       window.electron.project.setPath(workspace.path);
       // Keep the stored setting in sync — the chat's file tools and
       // "apply" actions fall back to it, and it otherwise only updates
-      // when the user clicks "Open Folder".
-      window.electron.store.set('projectPath', workspace.path);
+      // when the user clicks "Open Folder". Skip virtual remote-env roots
+      // so a real local folder path never gets replaced by /env/... paths.
+      if (!workspace.path.startsWith('/env/')) {
+        window.electron.store.set('projectPath', workspace.path);
+      }
     }
   }, [workspace?.path]);
 
