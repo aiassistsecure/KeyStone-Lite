@@ -3,6 +3,12 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
 import Store from 'electron-store';
+import { augmentPathSync, fixSpawnPath } from './shell-path';
+
+// PATH fix layer 1 — synchronous, before anything can spawn: GUI-launched
+// apps get a skeleton PATH (no Homebrew/nvm/Volta), which is why the very
+// first `npm install` used to die with "npm: command not found" (127).
+augmentPathSync();
 
 // Optional native deps — loaded lazily, everything degrades gracefully.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,6 +94,12 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // PATH fix layer 2 — ask the user's own login shell (bash/zsh/fish,
+  // whatever they use) for its real PATH and adopt it. Non-blocking;
+  // resolves in well under a second on typical setups, long before the
+  // first user-triggered command spawn.
+  fixSpawnPath().catch(() => { /* never let PATH resolution break startup */ });
+
   createWindow();
 
   // Register 'activate' only after the app is ready — on macOS this event
