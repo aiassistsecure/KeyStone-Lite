@@ -633,6 +633,7 @@ interface ChatPanelProps {
   apiKey: string;
   mode: 'demo' | 'api';
   session: SessionInfo | null;
+  projectPath?: string | null;
   contextFiles: string[];
   openFiles: OpenFile[];
   activeFile: string | null;
@@ -672,6 +673,7 @@ export function ChatPanel({
   onRemoveFromContext,
   onApplyEdit,
   onNewSession,
+  projectPath: projectPathProp = null,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -1073,7 +1075,10 @@ Updated section content here...
         ? `\nOpen files: ${openFiles.map(f => f.name).join(', ')}`
         : '';
       
-      const projectPath = await window.electron.store.get('projectPath');
+      // The workspace prop is the source of truth for the open project —
+      // the stored setting only updates via "Open Folder", so it goes stale
+      // when a session or environment is restored.
+      const projectPath = projectPathProp || (await window.electron.store.get('projectPath'));
       const projectTree = projectPath ? await getProjectTree(projectPath as string) : '';
       
       const systemPrompt = `You are Keystone Lite, an AI code editor. You help users write, debug, and improve code.
@@ -1569,7 +1574,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
 
   const applyCodeToFile = async (filename: string, code: string) => {
     try {
-      const projectPath = await window.electron.store.get('projectPath');
+      const projectPath = projectPathProp || (await window.electron.store.get('projectPath'));
       if (!projectPath) {
         alert('No project open. Please open a project first.');
         return;
@@ -1586,7 +1591,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
   const applySurgicalEdits = async (edits: SurgicalEdit[]) => {
     console.log('[Apply] Starting surgical edits:', edits.length, 'edits');
     try {
-      const projectPath = await window.electron.store.get('projectPath');
+      const projectPath = projectPathProp || (await window.electron.store.get('projectPath'));
       console.log('[Apply] Project path:', projectPath);
       
       if (!projectPath) {

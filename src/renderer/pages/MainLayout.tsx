@@ -101,6 +101,10 @@ export function MainLayout({ apiKey, mode = 'api', session = null, workspace = n
     if (workspace?.path) {
       setProjectPath(workspace.path);
       window.electron.project.setPath(workspace.path);
+      // Keep the stored setting in sync — the chat's file tools and
+      // "apply" actions fall back to it, and it otherwise only updates
+      // when the user clicks "Open Folder".
+      window.electron.store.set('projectPath', workspace.path);
     }
   }, [workspace?.path]);
 
@@ -342,6 +346,7 @@ export function MainLayout({ apiKey, mode = 'api', session = null, workspace = n
               apiKey={apiKey}
               mode={mode}
               session={session}
+              projectPath={projectPath}
               onNewSession={
                 onNewSession
                   ? async () => {
