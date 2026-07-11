@@ -346,7 +346,15 @@ export function MainLayout({ apiKey, mode = 'api', session = null, workspace = n
                     ))}
                   </div>
                   <div className="flex-1 min-h-0">
-                    {dockTab === 'terminal' && <TerminalPanel cwd={projectPath || '/'} />}
+                    {dockTab === 'terminal' && (
+                      <TerminalPanel
+                        cwd={projectPath || '/'}
+                        apiKey={apiKey}
+                        envMode={session?.envMode || 'local'}
+                        environmentId={session?.environmentId}
+                        environmentName={session?.environmentName}
+                      />
+                    )}
                     {dockTab === 'metrics' && <MetricsPanel />}
                   </div>
                 </div>
