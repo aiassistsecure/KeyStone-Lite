@@ -690,8 +690,8 @@ export function ChatPanel({
   const autoApproveRef = useRef(false);
   const seqRef = useRef(0);
 
-  // Remote Keystone environment session: agent gets app controls instead of
-  // local terminal tools. The user's terminal panel always stays local.
+  // Remote Keystone environment session: agent commands and the terminal use
+  // AiAS runtime workspaces instead of the local Electron shell.
   const remoteEnvId = session?.envMode === 'remote' ? session.environmentId : undefined;
   const keystoneBaseUrlRef = useRef(DEFAULT_KEYSTONE_BASE_URL);
   const contextArchiveRef = useRef<ArchiveEntry[]>([]);
@@ -704,7 +704,11 @@ export function ChatPanel({
 
   // Platform runtime session for remote run_command — created lazily on the
   // first approved command, reused afterwards, recreated if it expires.
-  const runtimeSessionRef = useRef<{ envId: string; sessionId: string } | null>(null);
+  const runtimeSessionRef = useRef<{
+    envId: string;
+    sessionId: string;
+    workspaceRoot: string;
+  } | null>(null);
 
   const runRemoteCommand = async (command: string): Promise<string> => {
     if (!remoteEnvId) return 'Error: no remote environment is attached to this session.';
@@ -712,7 +716,7 @@ export function ChatPanel({
     // Reuse the cached runtime session when possible, but re-sync the
     // environment's files before every run so edit-then-test workflows see
     // the latest file contents in the sandbox.
-    const ensureSessionAndSync = async (): Promise<string> => {
+    const ensureSessionAndSync = async (): Promise<{ sessionId: string; workspaceRoot: string }> => {
       let sid =
         runtimeSessionRef.current?.envId === remoteEnvId
           ? runtimeSessionRef.current.sessionId
@@ -720,22 +724,35 @@ export function ChatPanel({
       if (!sid) {
         const created = await runtime.createSession(remoteEnvId);
         sid = created.session_id;
-        runtimeSessionRef.current = { envId: remoteEnvId, sessionId: sid };
       }
-      await runtime.syncWorkspace(sid, remoteEnvId);
-      return sid;
+      const synced = await runtime.syncWorkspace(sid, remoteEnvId);
+      if (!synced.synced || !synced.workspace) {
+        throw new Error('Runtime sync did not return a workspace root. Refusing remote execution.');
+      }
+      runtimeSessionRef.current = {
+        envId: remoteEnvId,
+        sessionId: sid,
+        workspaceRoot: synced.workspace,
+      };
+      return { sessionId: sid, workspaceRoot: synced.workspace };
     };
     try {
       let res: RuntimeRunCodeResult;
       try {
-        const sessionId = await ensureSessionAndSync();
-        res = await runShellCommand(runtime, sessionId, command);
+        const active = await ensureSessionAndSync();
+        res = await runShellCommand(runtime, active.sessionId, command, {
+          workspaceRoot: active.workspaceRoot,
+          environmentId: remoteEnvId,
+        });
       } catch (e) {
         // The runtime session may have expired — recreate once and retry.
         if (e instanceof RuntimeApiError && (e.status === 404 || e.status === 410)) {
           runtimeSessionRef.current = null;
-          const sessionId = await ensureSessionAndSync();
-          res = await runShellCommand(runtime, sessionId, command);
+          const active = await ensureSessionAndSync();
+          res = await runShellCommand(runtime, active.sessionId, command, {
+            workspaceRoot: active.workspaceRoot,
+            environmentId: remoteEnvId,
+          });
         } else {
           throw e;
         }
