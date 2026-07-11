@@ -25,6 +25,7 @@ import { streamToolCompletion } from '../lib/stream-completion';
 import { subscribe as subscribeAgentEvents, publish as publishAgentEvent } from '../lib/agent-events';
 import { terminals } from '../lib/terminal-sessions';
 import { KeystoneClient, getKeystoneBaseUrl, DEFAULT_KEYSTONE_BASE_URL } from '../lib/keystone-api';
+import { RuntimeClient, RuntimeApiError, runShellCommand, type RuntimeRunCodeResult } from '../lib/runtime-api';
 import { invalidateRemoteTree } from '../lib/remote-bridge';
 import { saveChatMessage, loadChatMessages, type ChatRecord } from '../lib/sessions';
 import type { SessionInfo } from '../types/electron';
@@ -542,9 +543,10 @@ function searchArchive(archive: ArchiveEntry[], query: string): string {
 }
 
 // Terminal tool names that do not apply when working inside a remote Keystone
-// environment (the terminal panel itself stays local for the user, but the
-// agent gets app controls against the environment instead of a local shell).
-const LOCAL_TERMINAL_TOOL_NAMES = new Set(['run_command', 'open_terminal', 'list_terminals']);
+// environment. run_command stays available remotely — it is routed through
+// the platform runtime sandbox (approval-gated) instead of a local shell.
+// Only the local terminal-tab management tools are dropped.
+const LOCAL_TERMINAL_TOOL_NAMES = new Set(['open_terminal', 'list_terminals']);
 
 const REMOTE_APP_TOOLS = [
   {
@@ -694,6 +696,57 @@ export function ChatPanel({
       keystoneBaseUrlRef.current = url;
     });
   }, [remoteEnvId]);
+
+  // Platform runtime session for remote run_command — created lazily on the
+  // first approved command, reused afterwards, recreated if it expires.
+  const runtimeSessionRef = useRef<{ envId: string; sessionId: string } | null>(null);
+
+  const runRemoteCommand = async (command: string): Promise<string> => {
+    if (!remoteEnvId) return 'Error: no remote environment is attached to this session.';
+    const runtime = new RuntimeClient(apiKey, keystoneBaseUrlRef.current);
+    // Reuse the cached runtime session when possible, but re-sync the
+    // environment's files before every run so edit-then-test workflows see
+    // the latest file contents in the sandbox.
+    const ensureSessionAndSync = async (): Promise<string> => {
+      let sid =
+        runtimeSessionRef.current?.envId === remoteEnvId
+          ? runtimeSessionRef.current.sessionId
+          : null;
+      if (!sid) {
+        const created = await runtime.createSession(remoteEnvId);
+        sid = created.session_id;
+        runtimeSessionRef.current = { envId: remoteEnvId, sessionId: sid };
+      }
+      await runtime.syncWorkspace(sid, remoteEnvId);
+      return sid;
+    };
+    try {
+      let res: RuntimeRunCodeResult;
+      try {
+        const sessionId = await ensureSessionAndSync();
+        res = await runShellCommand(runtime, sessionId, command);
+      } catch (e) {
+        // The runtime session may have expired — recreate once and retry.
+        if (e instanceof RuntimeApiError && (e.status === 404 || e.status === 410)) {
+          runtimeSessionRef.current = null;
+          const sessionId = await ensureSessionAndSync();
+          res = await runShellCommand(runtime, sessionId, command);
+        } else {
+          throw e;
+        }
+      }
+      const output = [res.stdout, res.stderr].filter(Boolean).join('\n').trim();
+      return res.exit_code === 0
+        ? `Command finished (in the remote runtime sandbox).\nOutput:\n${output || '(no output)'}`
+        : `Command exited with code ${res.exit_code} (in the remote runtime sandbox).\nOutput:\n${output || '(no output)'}`;
+    } catch (e) {
+      runtimeSessionRef.current = null;
+      if (e instanceof RuntimeApiError) {
+        return `The command could not run: ${e.friendly}`;
+      }
+      return `Error: ${e instanceof Error ? e.message : String(e)}`;
+    }
+  };
 
   const persistMessage = (role: ChatRecord['role'], content: string, meta?: Record<string, unknown>) => {
     if (!session) return;
@@ -935,7 +988,8 @@ export function ChatPanel({
         .join('\n\n');
 
       const runToolsList = remoteEnvId
-        ? `- start_app(command): Start the app in the remote environment (user approves first)
+        ? `- run_command(command): Run a shell command in the platform runtime sandbox attached to this environment (user approves first). The environment's files are synced into the sandbox on first use. Use for builds, tests, installs — NOT for reading files (use read_file) or searching (use search_files). Note: file changes made by commands happen in the sandbox copy; edit environment files with the write tools instead
+- start_app(command): Start the app in the remote environment (user approves first)
 - stop_app(): Stop the running remote app
 - get_logs(lines?): Read recent output from the remote app`
         : `- run_command(command, terminal?): Run a shell command in a terminal tab (user approves first). Use for builds, tests, installs — NOT for reading files (use read_file) or searching (use search_files)
@@ -1275,6 +1329,25 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               const command = String(args.command || '').trim();
               if (!command) {
                 result = 'Error: run_command needs a command.';
+              } else if (remoteEnvId) {
+                const approvalId = `ap_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+                publishAgentEvent({ type: 'status', status: 'waiting', detail: 'Waiting for command approval' });
+                const decisionPromise = waitForApproval(approvalId, abortController.signal);
+                publishAgentEvent({
+                  type: 'approval_request',
+                  approvalId,
+                  command,
+                  terminal: 'remote runtime',
+                  source: 'real',
+                });
+                const decision = await decisionPromise;
+                publishAgentEvent({ type: 'status', status: 'working', detail: 'Assistant is working' });
+                if (decision === 'run') {
+                  result = await runRemoteCommand(command);
+                } else {
+                  result =
+                    'The user denied this command. Do not run it again; ask the user how to proceed or continue without it.';
+                }
               } else {
                 const termName = String(args.terminal || 'main').trim() || 'main';
                 const t =
