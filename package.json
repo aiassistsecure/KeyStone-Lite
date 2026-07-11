@@ -1,10 +1,10 @@
 {
   "name": "keystone-lite",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "AI-powered code debugging and editing - powered by any model",
   "main": "dist/main/index.js",
   "author": "AiAssist <dev@interchained.org>",
-  "license": "MIT",
+  "license": "BUSL",
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
     "dev:main": "tsc -p tsconfig.main.json --watch",
