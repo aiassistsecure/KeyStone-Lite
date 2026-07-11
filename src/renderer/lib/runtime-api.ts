@@ -108,6 +108,10 @@ export class RuntimeClient {
       ...(timeoutSeconds ? { timeout_seconds: timeoutSeconds } : {}),
     });
   }
+
+  destroySession(sessionId: string): Promise<unknown> {
+    return this.request('DELETE', `/sessions/${sessionId}`);
+  }
 }
 
 const SHELL_TIMEOUT_SECONDS = 55;
@@ -120,20 +124,77 @@ const SHELL_TIMEOUT_SECONDS = 55;
 export function runShellCommand(
   client: RuntimeClient,
   sessionId: string,
-  command: string
+  command: string,
+  workingDirectory = '.'
 ): Promise<RuntimeRunCodeResult> {
   const code = [
-    'import subprocess, sys',
+    'import os, signal, subprocess, sys',
+    'root = os.path.realpath(os.getcwd())',
+    `requested = ${JSON.stringify(workingDirectory)}`,
+    'workdir = os.path.realpath(os.path.join(root, requested))',
+    "if os.path.commonpath([root, workdir]) != root or not os.path.isdir(workdir):",
+    "    sys.stderr.write('Invalid remote working directory')",
+    '    sys.exit(2)',
+    `p = subprocess.Popen(${JSON.stringify(command)}, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=workdir, start_new_session=True)`,
     'try:',
-    `    p = subprocess.run(${JSON.stringify(command)}, shell=True, capture_output=True, text=True, timeout=${SHELL_TIMEOUT_SECONDS})`,
-    'except subprocess.TimeoutExpired as e:',
-    "    out = e.stdout.decode() if isinstance(e.stdout, bytes) else (e.stdout or '')",
-    '    sys.stdout.write(out)',
+    `    out, err = p.communicate(timeout=${SHELL_TIMEOUT_SECONDS})`,
+    'except subprocess.TimeoutExpired:',
+    '    os.killpg(p.pid, signal.SIGKILL)',
+    '    out, err = p.communicate()',
+    "    sys.stdout.write(out or '')",
+    "    sys.stderr.write(err or '')",
     `    sys.stderr.write('\\n[command timed out after ${SHELL_TIMEOUT_SECONDS}s]')`,
     '    sys.exit(124)',
-    "sys.stdout.write(p.stdout or '')",
-    "sys.stderr.write(p.stderr or '')",
-    'sys.exit(p.returncode)',
+    "sys.stdout.write(out or '')",
+    "sys.stderr.write(err or '')",
+    'sys.exit(p.returncode or 0)',
   ].join('\n');
   return client.runCode(sessionId, 'python', code, SHELL_TIMEOUT_SECONDS + 10);
+}
+
+export interface RemoteTerminalCommandResult extends RuntimeRunCodeResult {
+  cwd: string;
+}
+
+/**
+ * Execute one interactive terminal line inside the remote runtime workspace.
+ * A per-call marker captures the shell's final directory so commands such as
+ * `cd src` persist for the next line without exposing the host runtime path.
+ */
+export async function runRemoteTerminalCommand(
+  client: RuntimeClient,
+  sessionId: string,
+  command: string,
+  workingDirectory = '.'
+): Promise<RemoteTerminalCommandResult> {
+  const marker = `__KEYSTONE_CWD_${crypto.randomUUID().replace(/-/g, '')}__`;
+  const shellCommand = [
+    command,
+    '__keystone_exit=$?',
+    `printf '\\n${marker}%s\\n' "$PWD"`,
+    'exit "$__keystone_exit"',
+  ].join('\n');
+  const result = await runShellCommand(client, sessionId, shellCommand, workingDirectory);
+
+  let stdout = result.stdout || '';
+  let stderr = result.stderr || '';
+  let cwd = workingDirectory;
+  const markerIndex = stdout.lastIndexOf(marker);
+  if (markerIndex >= 0) {
+    const beforeMarker = stdout.slice(0, markerIndex).replace(/\n$/, '');
+    const absoluteCwd = stdout.slice(markerIndex + marker.length).split(/\r?\n/, 1)[0].trim();
+    stdout = beforeMarker;
+
+    const workspaceToken = `/workspaces/${sessionId}`;
+    const workspaceIndex = absoluteCwd.indexOf(workspaceToken);
+    if (workspaceIndex >= 0) {
+      const runtimeWorkspaceRoot = absoluteCwd.slice(0, workspaceIndex + workspaceToken.length);
+      stdout = stdout.split(runtimeWorkspaceRoot).join('/workspace');
+      stderr = stderr.split(runtimeWorkspaceRoot).join('/workspace');
+      const relative = absoluteCwd.slice(workspaceIndex + workspaceToken.length).replace(/^\/+/, '');
+      cwd = relative || '.';
+    }
+  }
+
+  return { ...result, stdout, stderr, cwd };
 }
