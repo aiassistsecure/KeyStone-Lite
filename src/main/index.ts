@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
 import Store from 'electron-store';
+import { augmentPathSync, fixSpawnPath } from './shell-path';
 // PATH fix layer 1 — synchronous, before anything can spawn: GUI-launched
 // apps get a skeleton PATH (no Homebrew/nvm/Volta), which is why the very
 // first `npm install` used to die with "npm: command not found" (127).
