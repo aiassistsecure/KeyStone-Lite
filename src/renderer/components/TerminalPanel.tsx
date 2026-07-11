@@ -339,7 +339,9 @@ function RemoteTerminalPanel({
     setBusy(true);
     write(`remote:${remoteCwd === '.' ? '/workspace' : `/workspace/${remoteCwd}`} ❯ ${cmd}\n`);
     try {
-      const result = await runRemoteTerminalCommand(client, sessionId, cmd, remoteCwd);
+      // environment_id rides every run — Runtime B fails closed on
+      // binding mismatches since aias PR #34.
+      const result = await runRemoteTerminalCommand(client, sessionId, cmd, remoteCwd, environmentId);
       if (result.stdout) write(`${result.stdout}${result.stdout.endsWith('\n') ? '' : '\n'}`);
       if (result.stderr) write(`\x1b[31m${result.stderr}${result.stderr.endsWith('\n') ? '' : '\n'}\x1b[0m`);
       setRemoteCwd(result.cwd);

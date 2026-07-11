@@ -99,13 +99,21 @@ export class RuntimeClient {
     sessionId: string,
     language: 'python' | 'node',
     code: string,
-    timeoutSeconds?: number
+    timeoutSeconds?: number,
+    environmentId?: string
   ): Promise<RuntimeRunCodeResult> {
+    // environment_id is REQUIRED by Runtime B since aias PR #34 ("fail
+    // closed when Runtime B has no session workspace"): sessions are bound
+    // to an environment at creation, and run_code requests whose
+    // environment_id doesn't match that binding — INCLUDING omitting it —
+    // are rejected with 409 "runtime environment does not match session
+    // binding". Always pass it for environment-scoped sessions.
     return this.request('POST', '/run_code', {
       session_id: sessionId,
       language,
       code,
       ...(timeoutSeconds ? { timeout_seconds: timeoutSeconds } : {}),
+      ...(environmentId ? { environment_id: environmentId } : {}),
     });
   }
 
@@ -125,7 +133,8 @@ export function runShellCommand(
   client: RuntimeClient,
   sessionId: string,
   command: string,
-  workingDirectory = '.'
+  workingDirectory = '.',
+  environmentId?: string
 ): Promise<RuntimeRunCodeResult> {
   const code = [
     'import os, signal, subprocess, sys',
@@ -149,7 +158,7 @@ export function runShellCommand(
     "sys.stderr.write(err or '')",
     'sys.exit(p.returncode or 0)',
   ].join('\n');
-  return client.runCode(sessionId, 'python', code, SHELL_TIMEOUT_SECONDS + 10);
+  return client.runCode(sessionId, 'python', code, SHELL_TIMEOUT_SECONDS + 10, environmentId);
 }
 
 export interface RemoteTerminalCommandResult extends RuntimeRunCodeResult {
@@ -165,7 +174,8 @@ export async function runRemoteTerminalCommand(
   client: RuntimeClient,
   sessionId: string,
   command: string,
-  workingDirectory = '.'
+  workingDirectory = '.',
+  environmentId?: string
 ): Promise<RemoteTerminalCommandResult> {
   const marker = `__KEYSTONE_CWD_${crypto.randomUUID().replace(/-/g, '')}__`;
   const shellCommand = [
@@ -174,7 +184,7 @@ export async function runRemoteTerminalCommand(
     `printf '\\n${marker}%s\\n' "$PWD"`,
     'exit "$__keystone_exit"',
   ].join('\n');
-  const result = await runShellCommand(client, sessionId, shellCommand, workingDirectory);
+  const result = await runShellCommand(client, sessionId, shellCommand, workingDirectory, environmentId);
 
   let stdout = result.stdout || '';
   let stderr = result.stderr || '';

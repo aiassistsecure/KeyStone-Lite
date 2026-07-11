@@ -729,13 +729,19 @@ export function ChatPanel({
       let res: RuntimeRunCodeResult;
       try {
         const sessionId = await ensureSessionAndSync();
-        res = await runShellCommand(runtime, sessionId, command);
+        res = await runShellCommand(runtime, sessionId, command, '.', remoteEnvId);
       } catch (e) {
-        // The runtime session may have expired — recreate once and retry.
-        if (e instanceof RuntimeApiError && (e.status === 404 || e.status === 410)) {
+        // Recreate the session once and retry on:
+        //  404/410 — the runtime session expired.
+        //  409     — environment/session binding conflict (Runtime B fails
+        //            closed since aias PR #34; a stale session created
+        //            before binding existed, or bound to a different
+        //            environment, can never succeed — a fresh session
+        //            bound to THIS environment can).
+        if (e instanceof RuntimeApiError && (e.status === 404 || e.status === 410 || e.status === 409)) {
           runtimeSessionRef.current = null;
           const sessionId = await ensureSessionAndSync();
-          res = await runShellCommand(runtime, sessionId, command);
+          res = await runShellCommand(runtime, sessionId, command, '.', remoteEnvId);
         } else {
           throw e;
         }
