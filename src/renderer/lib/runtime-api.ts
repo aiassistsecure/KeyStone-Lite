@@ -42,6 +42,20 @@ export interface RuntimeRunCodeResult {
   [key: string]: unknown;
 }
 
+export interface RuntimeSyncWorkspaceResult {
+  synced: boolean;
+  workspace: string;
+  environment_id: string;
+  files_extracted?: number;
+  [key: string]: unknown;
+}
+
+export interface ShellCommandOptions {
+  workspaceRoot: string;
+  environmentId: string;
+  workingDirectory?: string;
+}
+
 export class RuntimeClient {
   private apiKey: string;
   private baseUrl: string;
@@ -88,7 +102,7 @@ export class RuntimeClient {
     });
   }
 
-  syncWorkspace(sessionId: string, environmentId: string): Promise<unknown> {
+  syncWorkspace(sessionId: string, environmentId: string): Promise<RuntimeSyncWorkspaceResult> {
     return this.request('POST', '/sync_workspace', {
       session_id: sessionId,
       environment_id: environmentId,
@@ -99,13 +113,15 @@ export class RuntimeClient {
     sessionId: string,
     language: 'python' | 'node',
     code: string,
-    timeoutSeconds?: number
+    timeoutSeconds?: number,
+    environmentId?: string
   ): Promise<RuntimeRunCodeResult> {
     return this.request('POST', '/run_code', {
       session_id: sessionId,
       language,
       code,
       ...(timeoutSeconds ? { timeout_seconds: timeoutSeconds } : {}),
+      ...(environmentId ? { environment_id: environmentId } : {}),
     });
   }
 
@@ -125,11 +141,19 @@ export function runShellCommand(
   client: RuntimeClient,
   sessionId: string,
   command: string,
-  workingDirectory = '.'
+  options: ShellCommandOptions
 ): Promise<RuntimeRunCodeResult> {
+  const workingDirectory = options.workingDirectory || '.';
   const code = [
     'import os, signal, subprocess, sys',
-    'root = os.path.realpath(os.getcwd())',
+    `root = os.path.realpath(${JSON.stringify(options.workspaceRoot)})`,
+    `expected_session = ${JSON.stringify(sessionId)}`,
+    "if os.path.basename(root) != expected_session or os.path.basename(os.path.dirname(root)) != 'workspaces':",
+    "    sys.stderr.write('Runtime returned an invalid workspace root')",
+    '    sys.exit(2)',
+    'if not os.path.isdir(root):',
+    "    sys.stderr.write('Synced runtime workspace is unavailable')",
+    '    sys.exit(2)',
     `requested = ${JSON.stringify(workingDirectory)}`,
     'workdir = os.path.realpath(os.path.join(root, requested))',
     "if os.path.commonpath([root, workdir]) != root or not os.path.isdir(workdir):",
@@ -149,7 +173,13 @@ export function runShellCommand(
     "sys.stderr.write(err or '')",
     'sys.exit(p.returncode or 0)',
   ].join('\n');
-  return client.runCode(sessionId, 'python', code, SHELL_TIMEOUT_SECONDS + 10);
+  return client.runCode(
+    sessionId,
+    'python',
+    code,
+    SHELL_TIMEOUT_SECONDS + 10,
+    options.environmentId
+  );
 }
 
 export interface RemoteTerminalCommandResult extends RuntimeRunCodeResult {
@@ -165,8 +195,9 @@ export async function runRemoteTerminalCommand(
   client: RuntimeClient,
   sessionId: string,
   command: string,
-  workingDirectory = '.'
+  options: ShellCommandOptions
 ): Promise<RemoteTerminalCommandResult> {
+  const workingDirectory = options.workingDirectory || '.';
   const marker = `__KEYSTONE_CWD_${crypto.randomUUID().replace(/-/g, '')}__`;
   const shellCommand = [
     command,
@@ -174,7 +205,7 @@ export async function runRemoteTerminalCommand(
     `printf '\\n${marker}%s\\n' "$PWD"`,
     'exit "$__keystone_exit"',
   ].join('\n');
-  const result = await runShellCommand(client, sessionId, shellCommand, workingDirectory);
+  const result = await runShellCommand(client, sessionId, shellCommand, options);
 
   let stdout = result.stdout || '';
   let stderr = result.stderr || '';
