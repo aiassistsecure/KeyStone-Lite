@@ -39,6 +39,37 @@ interface CompletionResponse {
   };
 }
 
+export class StreamCompletionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StreamCompletionError';
+  }
+}
+
+export function getStreamErrorMessage(chunk: unknown): string | null {
+  if (!chunk || typeof chunk !== 'object') return null;
+
+  const record = chunk as Record<string, unknown>;
+  const error = record.error;
+  if (typeof error === 'string' && error.trim()) return error;
+  if (error && typeof error === 'object') {
+    const errorRecord = error as Record<string, unknown>;
+    if (typeof errorRecord.message === 'string' && errorRecord.message.trim()) {
+      return errorRecord.message;
+    }
+    if (typeof errorRecord.detail === 'string' && errorRecord.detail.trim()) {
+      return errorRecord.detail;
+    }
+  }
+
+  if (record.type === 'error') {
+    if (typeof record.message === 'string' && record.message.trim()) return record.message;
+    return 'The provider stream reported an error.';
+  }
+
+  return null;
+}
+
 export async function streamToolCompletion(options: StreamCompletionOptions): Promise<CompletionResponse> {
   const {
     apiKey,
@@ -126,60 +157,65 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
         continue;
       }
 
+      let chunk: any;
       try {
-        const chunk = JSON.parse(data);
-        console.log('[Stream] Parsed chunk:', JSON.stringify(chunk).slice(0, 300));
-        if (chunk.id) responseId = chunk.id;
-
-        const delta = chunk.choices?.[0]?.delta;
-        const reason = chunk.choices?.[0]?.finish_reason;
-        if (reason) finishReason = reason;
-
-        if (delta?.content) {
-          content += delta.content;
-          onProgress?.(content);
-          
-          const editMatch = content.match(/<<<(EDIT|INSERT|REPLACE|DELETE|CREATE)\s+([^\s>]+)/i);
-          if (editMatch) {
-            const [, op, filePath] = editMatch;
-            onToolActivity?.('surgical_edit', filePath, op.toLowerCase());
-          }
-        }
-
-        if (delta?.tool_calls) {
-          for (const tc of delta.tool_calls) {
-            const idx = tc.index ?? 0;
-            if (!toolCalls.has(idx)) {
-              toolCalls.set(idx, {
-                id: tc.id || '',
-                type: tc.type || 'function',
-                function: { name: '', arguments: '' }
-              });
-            }
-            const existing = toolCalls.get(idx)!;
-            if (tc.id) existing.id = tc.id;
-            if (tc.type) existing.type = tc.type;
-            if (tc.function?.name) {
-              existing.function.name += tc.function.name;
-              onToolActivity?.(existing.function.name);
-            }
-            if (tc.function?.arguments) {
-              existing.function.arguments += tc.function.arguments;
-              try {
-                const args = JSON.parse(existing.function.arguments);
-                const filePath = args.file_path || args.filePath || args.path;
-                const operation = args.operation || args.action || args.type;
-                if (filePath) {
-                  onToolActivity?.(existing.function.name, filePath, operation);
-                }
-              } catch {
-                // Arguments not complete yet, will parse when done
-              }
-            }
-          }
-        }
+        chunk = JSON.parse(data);
       } catch {
-        // Skip malformed JSON chunks
+        console.warn('[Stream] Skipping malformed JSON chunk');
+        continue;
+      }
+
+      console.log('[Stream] Parsed chunk:', JSON.stringify(chunk).slice(0, 300));
+      const streamError = getStreamErrorMessage(chunk);
+      if (streamError) throw new StreamCompletionError(streamError);
+      if (chunk.id) responseId = chunk.id;
+
+      const delta = chunk.choices?.[0]?.delta;
+      const reason = chunk.choices?.[0]?.finish_reason;
+      if (reason) finishReason = reason;
+
+      if (delta?.content) {
+        content += delta.content;
+        onProgress?.(content);
+
+        const editMatch = content.match(/<<<(EDIT|INSERT|REPLACE|DELETE|CREATE)\s+([^\s>]+)/i);
+        if (editMatch) {
+          const [, op, filePath] = editMatch;
+          onToolActivity?.('surgical_edit', filePath, op.toLowerCase());
+        }
+      }
+
+      if (delta?.tool_calls) {
+        for (const tc of delta.tool_calls) {
+          const idx = tc.index ?? 0;
+          if (!toolCalls.has(idx)) {
+            toolCalls.set(idx, {
+              id: tc.id || '',
+              type: tc.type || 'function',
+              function: { name: '', arguments: '' }
+            });
+          }
+          const existing = toolCalls.get(idx)!;
+          if (tc.id) existing.id = tc.id;
+          if (tc.type) existing.type = tc.type;
+          if (tc.function?.name) {
+            existing.function.name += tc.function.name;
+            onToolActivity?.(existing.function.name);
+          }
+          if (tc.function?.arguments) {
+            existing.function.arguments += tc.function.arguments;
+            try {
+              const args = JSON.parse(existing.function.arguments);
+              const filePath = args.file_path || args.filePath || args.path;
+              const operation = args.operation || args.action || args.type;
+              if (filePath) {
+                onToolActivity?.(existing.function.name, filePath, operation);
+              }
+            } catch {
+              // Arguments not complete yet, will parse when done
+            }
+          }
+        }
       }
     }
   }
@@ -191,6 +227,12 @@ export async function streamToolCompletion(options: StreamCompletionOptions): Pr
         return idxA - idxB;
       })
     : undefined;
+
+  if (!content && !assembledToolCalls?.length) {
+    throw new StreamCompletionError(
+      'The provider stream ended without assistant content or tool calls.'
+    );
+  }
 
   return {
     id: responseId || `chatcmpl-${Date.now()}`,

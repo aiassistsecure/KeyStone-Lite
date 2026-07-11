@@ -21,7 +21,11 @@ import {
 import type { OpenFile } from '../pages/MainLayout';
 import { ModelSelector } from './ModelSelector';
 import { parseSurgicalEdits, applyMultipleEdits, type SurgicalEdit } from '../lib/surgical-edit';
-import { streamToolCompletion } from '../lib/stream-completion';
+import {
+  getStreamErrorMessage,
+  StreamCompletionError,
+  streamToolCompletion,
+} from '../lib/stream-completion';
 import { subscribe as subscribeAgentEvents, publish as publishAgentEvent } from '../lib/agent-events';
 import { terminals } from '../lib/terminal-sessions';
 import { KeystoneClient, getKeystoneBaseUrl, DEFAULT_KEYSTONE_BASE_URL } from '../lib/keystone-api';
@@ -652,6 +656,7 @@ interface Message {
   content: string;
   timestamp: Date;
   approval?: ApprovalInfo;
+  error?: boolean;
 }
 
 export function ChatPanel({
@@ -885,7 +890,12 @@ export function ChatPanel({
     const lastMessage = messages[messages.length - 1];
     console.log('[AutoApply] Last message:', lastMessage?.role, 'hasContent:', !!lastMessage?.content, 'alreadyApplied:', appliedIdsRef.current.has(lastMessage?.id || ''));
     
-    if (lastMessage?.role === 'assistant' && lastMessage.content && !appliedIdsRef.current.has(lastMessage.id)) {
+    if (
+      lastMessage?.role === 'assistant' &&
+      !lastMessage.error &&
+      lastMessage.content &&
+      !appliedIdsRef.current.has(lastMessage.id)
+    ) {
       const { edits } = parseSurgicalEdits(lastMessage.content);
       console.log('[AutoApply] Parsed edits:', edits.length, edits.map(e => `${e.type}:${e.file}`));
       
@@ -947,6 +957,7 @@ export function ChatPanel({
         role: 'assistant',
         content: '',
         timestamp: new Date(),
+        error: false,
       },
     ]);
 
@@ -1209,7 +1220,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
             const finalContent = choice?.message?.content || '';
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === assistantMessageId ? { ...m, content: finalContent } : m
+                m.id === assistantMessageId ? { ...m, content: finalContent, error: false } : m
               )
             );
             if (finalContent) persistMessage('assistant', finalContent);
@@ -1507,55 +1518,69 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
         let accumulatedContent = '';
+        let streamBuffer = '';
 
         if (reader) {
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
 
-            const chunk = decoder.decode(value, { stream: true });
-            const lines = chunk.split('\n');
+            streamBuffer += decoder.decode(value, { stream: true });
+            const lines = streamBuffer.split('\n');
+            streamBuffer = lines.pop() || '';
 
             for (const line of lines) {
               if (line.startsWith('data: ')) {
-                const data = line.slice(6);
+                const data = line.slice(6).trim();
                 if (data === '[DONE]') continue;
 
+                let parsed: any;
                 try {
-                  const parsed = JSON.parse(data);
-                  const delta = parsed.choices?.[0]?.delta?.content || '';
-                  accumulatedContent += delta;
-                  partialText = accumulatedContent;
-
-                  // Detect surgical edit operations from streaming content
-                  const editMatch = accumulatedContent.match(/<<<(EDIT|INSERT|REPLACE|DELETE|CREATE)>>>\s*\n\s*([^\n]+)/);
-                  if (editMatch) {
-                    const op = editMatch[1].toLowerCase();
-                    const filePath = editMatch[2].replace(/^(file:|path:)\s*/i, '').trim();
-                    const opLabels: Record<string, string> = {
-                      'edit': 'Editing',
-                      'insert': 'Inserting code in',
-                      'replace': 'Replacing code in',
-                      'delete': 'Removing code from',
-                      'create': 'Creating',
-                    };
-                    setStreamingOperation(opLabels[op] || 'Processing');
-                    if (filePath) setStreamingFile(filePath);
-                    setStreamingTool('surgical_edit');
-                  }
-
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantMessageId
-                        ? { ...m, content: accumulatedContent }
-                        : m
-                    )
-                  );
+                  parsed = JSON.parse(data);
                 } catch {
+                  console.warn('[Stream] Skipping malformed JSON chunk');
+                  continue;
                 }
+
+                const streamError = getStreamErrorMessage(parsed);
+                if (streamError) throw new StreamCompletionError(streamError);
+
+                const delta = parsed.choices?.[0]?.delta?.content || '';
+                accumulatedContent += delta;
+                partialText = accumulatedContent;
+
+                // Detect surgical edit operations from streaming content
+                const editMatch = accumulatedContent.match(/<<<(EDIT|INSERT|REPLACE|DELETE|CREATE)>>>\s*\n\s*([^\n]+)/);
+                if (editMatch) {
+                  const op = editMatch[1].toLowerCase();
+                  const filePath = editMatch[2].replace(/^(file:|path:)\s*/i, '').trim();
+                  const opLabels: Record<string, string> = {
+                    'edit': 'Editing',
+                    'insert': 'Inserting code in',
+                    'replace': 'Replacing code in',
+                    'delete': 'Removing code from',
+                    'create': 'Creating',
+                  };
+                  setStreamingOperation(opLabels[op] || 'Processing');
+                  if (filePath) setStreamingFile(filePath);
+                  setStreamingTool('surgical_edit');
+                }
+
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessageId
+                      ? { ...m, content: accumulatedContent, error: false }
+                      : m
+                  )
+                );
               }
             }
           }
+        }
+        if (!accumulatedContent) {
+          throw new StreamCompletionError(
+            'The provider stream ended without assistant content.'
+          );
         }
         if (accumulatedContent) persistMessage('assistant', accumulatedContent);
         publishAgentEvent({
@@ -1571,7 +1596,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMessageId
-              ? { ...m, content }
+              ? { ...m, content, error: false }
               : m
           )
         );
@@ -1595,7 +1620,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
           : '*[Stopped by user]*';
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === assistantMessageId ? { ...m, content: stoppedContent } : m
+            m.id === assistantMessageId ? { ...m, content: stoppedContent, error: false } : m
           )
         );
         persistMessage('assistant', stoppedContent);
@@ -1604,7 +1629,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMessageId
-              ? { ...m, content: `Error: ${errorText}` }
+              ? { ...m, content: `Error: ${errorText}`, error: true }
               : m
           )
         );
@@ -2103,8 +2128,14 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
               className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : ''}`}
             >
               {message.role === 'assistant' && (
-                <div className="w-8 h-8 rounded-none bg-cyan-500/10 flex items-center justify-center flex-shrink-0 border border-cyan-500/30">
-                  <Bot className="w-4 h-4 text-cyan-400" />
+                <div className={`w-8 h-8 rounded-none flex items-center justify-center flex-shrink-0 border ${
+                  message.error
+                    ? 'bg-red-500/10 border-red-500/30'
+                    : 'bg-cyan-500/10 border-cyan-500/30'
+                }`}>
+                  {message.error
+                    ? <ShieldAlert className="w-4 h-4 text-red-400" />
+                    : <Bot className="w-4 h-4 text-cyan-400" />}
                 </div>
               )}
 
@@ -2112,7 +2143,9 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                 className={`max-w-[85%] rounded-none px-4 py-3 relative ${
                   message.role === 'user'
                     ? 'bg-emerald-500/[0.06] text-white border border-emerald-500/25 border-r-2 border-r-emerald-400/60'
-                    : 'bg-black/30 text-gray-300 border border-cyan-500/15 border-l-2 border-l-cyan-400/50'
+                    : message.error
+                      ? 'bg-red-500/[0.06] text-red-200 border border-red-500/25 border-l-2 border-l-red-400/70'
+                      : 'bg-black/30 text-gray-300 border border-cyan-500/15 border-l-2 border-l-cyan-400/50'
                 }`}
               >
                 <div className="text-sm">
@@ -2123,7 +2156,7 @@ ${contextContent ? `\nFiles in context:\n${contextContent}` : ''}`;
                       </div>
                   }
                 </div>
-                {message.role === 'assistant' && (
+                {message.role === 'assistant' && !message.error && (
                   <button
                     onClick={() => copyToClipboard(message.content, message.id)}
                     className="mt-2 flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.1em] text-gray-500 hover:text-white"
