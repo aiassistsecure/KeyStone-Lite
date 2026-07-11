@@ -251,6 +251,7 @@ function RemoteTerminalPanel({
   const bufferRef = useRef('');
   const clientRef = useRef<RuntimeClient | null>(null);
   const runtimeSessionRef = useRef<string | null>(null);
+  const runtimeWorkspaceRootRef = useRef<string | null>(null);
 
   const write = (chunk: string) => {
     const rendered = toCRLF(chunk);
@@ -286,13 +287,17 @@ function RemoteTerminalPanel({
         connectionClient = client;
         const created = await client.createSession(environmentId);
         createdSessionId = created.session_id;
-        await client.syncWorkspace(created.session_id, environmentId);
+        const synced = await client.syncWorkspace(created.session_id, environmentId);
+        if (!synced.synced || !synced.workspace) {
+          throw new Error('Runtime sync did not return a workspace root. Refusing remote execution.');
+        }
         if (cancelled) {
           await client.destroySession(created.session_id).catch(() => undefined);
           return;
         }
         clientRef.current = client;
         runtimeSessionRef.current = created.session_id;
+        runtimeWorkspaceRootRef.current = synced.workspace;
         setStatus('ready');
         setStatusMessage('Remote runtime connected');
         write('CONNECTED: /workspace\nType a command below. Execution is isolated from this computer.\n\n');
@@ -317,6 +322,7 @@ function RemoteTerminalPanel({
       const sessionId = createdSessionId || runtimeSessionRef.current;
       clientRef.current = null;
       runtimeSessionRef.current = null;
+      runtimeWorkspaceRootRef.current = null;
       if (client && sessionId) client.destroySession(sessionId).catch(() => undefined);
     };
   }, [apiKey, environmentId, environmentName]);
@@ -325,7 +331,8 @@ function RemoteTerminalPanel({
     const cmd = command.trim();
     const client = clientRef.current;
     const sessionId = runtimeSessionRef.current;
-    if (!cmd || busy || status !== 'ready' || !client || !sessionId) return;
+    const workspaceRoot = runtimeWorkspaceRootRef.current;
+    if (!cmd || busy || status !== 'ready' || !client || !sessionId || !workspaceRoot) return;
 
     setCommand('');
     remember(cmd);
@@ -339,7 +346,11 @@ function RemoteTerminalPanel({
     setBusy(true);
     write(`remote:${remoteCwd === '.' ? '/workspace' : `/workspace/${remoteCwd}`} ❯ ${cmd}\n`);
     try {
-      const result = await runRemoteTerminalCommand(client, sessionId, cmd, remoteCwd);
+      const result = await runRemoteTerminalCommand(client, sessionId, cmd, {
+        workspaceRoot,
+        environmentId,
+        workingDirectory: remoteCwd,
+      });
       if (result.stdout) write(`${result.stdout}${result.stdout.endsWith('\n') ? '' : '\n'}`);
       if (result.stderr) write(`\x1b[31m${result.stderr}${result.stderr.endsWith('\n') ? '' : '\n'}\x1b[0m`);
       setRemoteCwd(result.cwd);
