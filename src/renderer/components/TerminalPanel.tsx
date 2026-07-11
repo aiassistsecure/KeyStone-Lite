@@ -9,6 +9,7 @@ import {
   RuntimeApiError,
   RuntimeClient,
   runRemoteTerminalCommand,
+  type RemoteTerminalCommandResult,
 } from '../lib/runtime-api';
 
 interface TerminalPanelProps {
@@ -338,17 +339,48 @@ function RemoteTerminalPanel({
 
     setBusy(true);
     write(`remote:${remoteCwd === '.' ? '/workspace' : `/workspace/${remoteCwd}`} ❯ ${cmd}\n`);
-    try {
-      // environment_id rides every run — Runtime B fails closed on
-      // binding mismatches since aias PR #34.
-      const result = await runRemoteTerminalCommand(client, sessionId, cmd, remoteCwd, environmentId);
+
+    const writeResult = (result: RemoteTerminalCommandResult) => {
       if (result.stdout) write(`${result.stdout}${result.stdout.endsWith('\n') ? '' : '\n'}`);
       if (result.stderr) write(`\x1b[31m${result.stderr}${result.stderr.endsWith('\n') ? '' : '\n'}\x1b[0m`);
       setRemoteCwd(result.cwd);
       if (result.exit_code !== 0) write(`\x1b[33m[exit ${result.exit_code}]\x1b[0m\n`);
+    };
+
+    try {
+      // environment_id rides every run — Runtime B fails closed on
+      // binding mismatches since aias PR #34.
+      const result = await runRemoteTerminalCommand(client, sessionId, cmd, remoteCwd, environmentId);
+      writeResult(result);
     } catch (error) {
-      const message = error instanceof RuntimeApiError ? error.friendly : error instanceof Error ? error.message : String(error);
-      write(`\x1b[31mREMOTE ERROR: ${message}\x1b[0m\n`);
+      // Self-heal instead of lecturing the user: expired sessions (404/410)
+      // and binding conflicts (409, fail-closed Runtime B) are fixable by
+      // rebinding a fresh session — so do exactly that, quietly, and replay
+      // the command once. Users should never have to understand what a
+      // "session binding" is.
+      const healable =
+        error instanceof RuntimeApiError &&
+        (error.status === 409 || error.status === 404 || error.status === 410);
+      if (healable) {
+        write(`\x1b[90mreconnecting runtime session…\x1b[0m\n`);
+        try {
+          const staleSessionId = runtimeSessionRef.current;
+          const created = await client.createSession(environmentId);
+          await client.syncWorkspace(created.session_id, environmentId);
+          runtimeSessionRef.current = created.session_id;
+          if (staleSessionId && staleSessionId !== created.session_id) {
+            client.destroySession(staleSessionId).catch(() => undefined);
+          }
+          const result = await runRemoteTerminalCommand(client, created.session_id, cmd, remoteCwd, environmentId);
+          writeResult(result);
+        } catch (retryError) {
+          const message = retryError instanceof RuntimeApiError ? retryError.friendly : retryError instanceof Error ? retryError.message : String(retryError);
+          write(`\x1b[31mREMOTE ERROR: ${message}\x1b[0m\n`);
+        }
+      } else {
+        const message = error instanceof RuntimeApiError ? error.friendly : error instanceof Error ? error.message : String(error);
+        write(`\x1b[31mREMOTE ERROR: ${message}\x1b[0m\n`);
+      }
     } finally {
       setBusy(false);
       inputRef.current?.focus();
